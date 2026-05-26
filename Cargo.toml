@@ -1,5 +1,5 @@
 [package]
-name = "rubrum_svg"
+name = "rubrum-svg"
 version = "0.1.0"
 edition = "2024"
 
@@ -10,8 +10,8 @@ path = "src/lib.rs"
 svg = "0.18.0"
 
 # Backend-agnostic shared render/spec core.
-rubrum_render = "*" 
-rubrum_svg_helpers = "*" 
+rubrum-render = "*" 
+rubrum-svg-helpers = "*" 
 
 # Domain types + aspect computation.
 rubrum = "*" 
