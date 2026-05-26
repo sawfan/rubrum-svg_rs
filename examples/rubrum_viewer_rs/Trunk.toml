@@ -1,0 +1,7 @@
+# Trunk config for rubrum_viewer (WASM chart viewer).
+
+[build]
+target = "index.html"
+dist = "dist"
+public_url = "./"
+

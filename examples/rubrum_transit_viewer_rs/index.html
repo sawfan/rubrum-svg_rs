@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rubrum Transit Viewer</title>
+
+    <link data-trunk rel="css" href="style.css" />
+    <link data-trunk rel="copy-dir" href="public" />
+
+    <!-- Trunk injects the WASM loader at the location of this tag. -->
+    <link data-trunk rel="rust" href="Cargo.toml" data-wasm-opt="z" />
+  </head>
+
+  <body>
+    <header class="topbar">
+      <div class="topbar-left">
+        <h1 class="app-title">Rubrum Transit Viewer</h1>
+        <div class="app-subtitle">Transit chart (two datasets: natal + transit)</div>
+      </div>
+
+      <div class="topbar-right">
+        <button id="rerender" type="button">Re-render</button>
+      </div>
+    </header>
+
+    <main class="main">
+      <div id="error" class="error" hidden></div>
+
+      <div class="grid">
+        <section class="panel">
+          <h2 class="panel-title">Chart</h2>
+          <div id="chart" class="chart"></div>
+        </section>
+
+        <section class="panel">
+          <h2 class="panel-title">Layout (TOML)</h2>
+          <textarea id="layout_toml" class="editor" spellcheck="false"></textarea>
+        </section>
+
+        <section class="panel">
+          <h2 class="panel-title">Dataset: natal (TOML)</h2>
+          <textarea id="data_natal" class="editor" spellcheck="false" readonly></textarea>
+        </section>
+
+        <section class="panel">
+          <h2 class="panel-title">Dataset: transit (TOML)</h2>
+          <textarea id="data_transit" class="editor" spellcheck="false" readonly></textarea>
+        </section>
+
+        <section class="panel">
+          <h2 class="panel-title">Full data (TOML)</h2>
+          <textarea id="data_toml" class="editor" spellcheck="false"></textarea>
+        </section>
+
+        <section class="panel">
+          <h2 class="panel-title">Theme + rules (TOML)</h2>
+          <div class="stack">
+            <textarea id="theme_toml" class="editor editor-small" spellcheck="false"></textarea>
+            <textarea id="rules_toml" class="editor editor-small" spellcheck="false"></textarea>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <script type="module">
+      // Trunk injects the wasm JS glue via the `<link data-trunk rel="rust" ...>` tag.
+      // That loader:
+      // - imports the hashed JS module (e.g. `rubrum_transit_viewer-<hash>.js`)
+      // - runs `init(...)`
+      // - stores the wasm-bindgen exports on `window.wasmBindings`
+      // - dispatches the `TrunkApplicationStarted` event
+      //
+      // Avoid importing `./rubrum_transit_viewer.js` directly (that file doesn’t exist);
+      // Trunk always emits hashed filenames.
+
+      function byId(id) {
+        const el = document.getElementById(id);
+        if (!el) throw new Error(`missing element #${id}`);
+        return el;
+      }
+
+      function showError(err) {
+        const errorEl = byId("error");
+        errorEl.hidden = false;
+        errorEl.textContent = String(err?.message ?? err);
+      }
+
+      function clearError() {
+        const errorEl = byId("error");
+        errorEl.hidden = true;
+        errorEl.textContent = "";
+      }
+
+      function extractDatasetToml(dataToml, datasetId) {
+        const lines = dataToml.split(/\r?\n/);
+
+        // This is intentionally a simple demo extraction:
+        // Find `[[data.datasets]]` blocks and grab the one with `id = "..."`.
+        const blocks = [];
+        let current = [];
+        let inBlock = false;
+
+        for (const line of lines) {
+          const starts = line.trim().startsWith("[[data.datasets]]");
+          if (starts) {
+            if (inBlock && current.length > 0) blocks.push(current);
+            current = [line];
+            inBlock = true;
+            continue;
+          }
+
+          if (!inBlock) continue;
+          current.push(line);
+        }
+
+        if (inBlock && current.length > 0) blocks.push(current);
+
+        for (const block of blocks) {
+          const text = block.join("\n");
+          const re = new RegExp(`\\bid\\s*=\\s*\"${datasetId}\"`);
+          if (re.test(text)) return text.trim() + "\n";
+        }
+
+        return `# dataset '${datasetId}' not found\n`;
+      }
+
+      function boot(bindings) {
+        const cfg = bindings.embedded_transit_tomls();
+
+        byId("theme_toml").value = cfg.theme_toml;
+        byId("layout_toml").value = cfg.layout_toml;
+        byId("data_toml").value = cfg.data_toml;
+        byId("rules_toml").value = cfg.rules_toml;
+
+        byId("data_natal").value = extractDatasetToml(cfg.data_toml, "natal");
+        byId("data_transit").value = extractDatasetToml(cfg.data_toml, "transit");
+
+        const render = () => {
+          clearError();
+
+          const themeToml = byId("theme_toml").value;
+          const layoutToml = byId("layout_toml").value;
+          const dataToml = byId("data_toml").value;
+          const rulesToml = byId("rules_toml").value;
+
+          // Keep the extracted dataset previews in sync.
+          byId("data_natal").value = extractDatasetToml(dataToml, "natal");
+          byId("data_transit").value = extractDatasetToml(dataToml, "transit");
+
+          const svg = bindings.render_transit_svg(
+            themeToml,
+            layoutToml,
+            dataToml,
+            rulesToml,
+          );
+          byId("chart").innerHTML = svg;
+        };
+
+        byId("rerender").addEventListener("click", render);
+
+        // Initial render.
+        render();
+      }
+
+      window.addEventListener("TrunkApplicationStarted", () => {
+        try {
+          const bindings = window.wasmBindings;
+          if (!bindings) {
+            throw new Error(
+              "Rubrum Transit Viewer: wasm bindings not found. Did Trunk load the wasm module?",
+            );
+          }
+
+          boot(bindings);
+        } catch (err) {
+          showError(err);
+        }
+      });
+    </script>
+  </body>
+</html>
+

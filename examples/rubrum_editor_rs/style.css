@@ -1,0 +1,515 @@
+:root {
+  --page-bg: #0f1012;
+  --page-fg: rgba(245, 245, 245, 0.96);
+  --muted: rgba(245, 245, 245, 0.7);
+
+  --panel-bg: rgba(255, 255, 255, 0.04);
+  --panel-bg-strong: rgba(255, 255, 255, 0.06);
+  --panel-border: rgba(255, 255, 255, 0.12);
+  --panel-border-strong: rgba(255, 255, 255, 0.18);
+
+  --focus-ring: rgba(255, 255, 255, 0.35);
+  --selected-stroke: rgba(255, 208, 64, 0.95);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--page-bg);
+  color: var(--page-fg);
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans,
+    Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+}
+
+.hidden {
+  display: none !important;
+}
+
+.muted {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.topbar {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--panel-border);
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.topbar-row {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.topbar h1 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 650;
+}
+
+.topbar .hint {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.app {
+  display: grid;
+  grid-template-columns: minmax(360px, 1fr) 520px;
+  gap: 12px;
+  padding: 12px;
+  align-items: start;
+
+  /* Reserve space for the bottom Advanced bar so the chart doesn't shift. */
+  padding-bottom: 64px;
+}
+
+@media (max-width: 1250px) {
+  .app {
+    grid-template-columns: 1fr;
+  }
+}
+
+.center,
+.right {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.panel {
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel-bg);
+}
+
+.panel-nested {
+  border-radius: 12px;
+  border: 1px solid var(--panel-border);
+  background: rgba(0, 0, 0, 0.14);
+}
+
+.panel-title {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 650;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.selection {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--panel-border-strong);
+  background: rgba(0, 0, 0, 0.25);
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+
+.kv {
+  display: grid;
+  gap: 8px;
+}
+
+.kv .row {
+  display: grid;
+  grid-template-columns: 90px 1fr;
+  gap: 10px;
+  align-items: baseline;
+}
+
+.kv .k {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.kv .v {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.92);
+  word-break: break-word;
+}
+
+.row-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  align-items: end;
+}
+
+.row-3 {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 10px;
+  align-items: end;
+}
+
+@media (max-width: 1250px) {
+  .row-2,
+  .row-3 {
+    grid-template-columns: 1fr;
+  }
+}
+
+label {
+  display: grid;
+  gap: 6px;
+}
+
+.label {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+input[type="text"],
+input[type="number"],
+select,
+textarea {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--panel-border);
+  background: rgba(0, 0, 0, 0.2);
+  color: var(--page-fg);
+  font-size: 13px;
+}
+
+input[type="color"] {
+  width: 100%;
+  height: 36px;
+  padding: 4px;
+  border-radius: 10px;
+  border: 1px solid var(--panel-border);
+  background: rgba(0, 0, 0, 0.2);
+}
+
+input[type="range"] {
+  width: 100%;
+}
+
+input:focus,
+select:focus,
+textarea:focus,
+button:focus {
+  outline: none;
+  border-color: var(--focus-ring);
+}
+
+button {
+  appearance: none;
+  border-radius: 10px;
+  border: 1px solid var(--panel-border-strong);
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--page-fg);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.btn-secondary {
+  background: rgba(0, 0, 0, 0.18);
+}
+
+button:hover {
+  background: rgba(255, 255, 255, 0.09);
+}
+
+button:active {
+  transform: translateY(1px);
+}
+
+/* --- Chart --- */
+
+.chart {
+  padding: 8px;
+}
+
+.chart .loading {
+  opacity: 0.85;
+  font-size: 14px;
+}
+
+#chart svg {
+  display: block;
+  width: min(900px, 100%);
+  height: auto;
+  background: transparent;
+  border-radius: 12px;
+}
+
+/* Selection highlighting: the WASM UI toggles `.rb-selected` on selected SVG elements. */
+#chart svg .rb-selected {
+  stroke: var(--selected-stroke) !important;
+  stroke-opacity: 1 !important;
+  stroke-width: 3px !important;
+}
+
+#chart svg .rb-selected.rb-band-fill,
+#chart svg .rb-selected.rb-lane-fill {
+  fill: rgba(255, 208, 64, 0.12) !important;
+}
+
+/* --- Properties panel --- */
+
+.properties h3 {
+  margin: 12px 0 10px;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.tab {
+  padding: 7px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--panel-border);
+  background: rgba(0, 0, 0, 0.16);
+}
+
+.tab.active {
+  border-color: var(--focus-ring);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.status {
+  min-height: 16px;
+  margin-bottom: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.prop-section {
+  display: none;
+}
+
+.prop-section.active {
+  display: block;
+}
+
+.checkbox {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 4px;
+}
+
+.checkbox input[type="checkbox"] {
+  width: auto;
+}
+
+/* --- Aspect toggles --- */
+
+#aspect_toggles {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.toggle {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--panel-border);
+  background: rgba(0, 0, 0, 0.16);
+  font-size: 13px;
+}
+
+.toggle input[type="checkbox"] {
+  width: auto;
+}
+
+.toggle .kind {
+  font-weight: 650;
+  margin-right: 10px;
+}
+
+.toggle .symbol {
+  color: var(--muted);
+}
+
+/* --- Advanced (drawer) --- */
+
+.advanced-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 50;
+
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  padding: 0 12px;
+  border-top: 1px solid var(--panel-border);
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(10px);
+}
+
+.advanced-bar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.advanced-drawer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 52px;
+  z-index: 60;
+
+  max-height: calc(80vh - 52px);
+  border-top: 1px solid var(--panel-border);
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(10px);
+
+  transform: translateY(105%);
+  transition: transform 180ms ease;
+}
+
+.advanced-drawer[data-rb-open="1"] {
+  transform: translateY(0);
+}
+
+.advanced-drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.advanced-drawer-body {
+  padding: 12px;
+  overflow: auto;
+}
+
+.adv-section {
+  display: none;
+}
+
+.adv-section.active {
+  display: block;
+}
+
+/* --- Code editor highlighting overlay --- */
+
+.code-editor {
+  position: relative;
+  border-radius: 12px;
+}
+
+.code-highlight {
+  display: none;
+
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--panel-border);
+  background: rgba(0, 0, 0, 0.25);
+
+  /* The highlight pre is a clip container; the inner <code> is translated on scroll. */
+  max-height: 220px;
+  overflow: hidden;
+}
+
+.code-editor-readonly .code-highlight {
+  display: block;
+  max-height: 360px;
+  overflow: auto;
+}
+
+.code-editor.highlight-on .code-highlight {
+  display: block;
+}
+
+.code-highlight code {
+  display: block;
+  font-size: 12px;
+  line-height: 1.35;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono,
+    "DejaVu Sans Mono", monospace;
+  white-space: pre;
+  overflow-wrap: normal;
+  word-break: normal;
+  tab-size: 4;
+}
+
+.code-input {
+  width: 100%;
+  min-height: 220px;
+  resize: vertical;
+  font-size: 12px;
+  line-height: 1.35;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono,
+    "DejaVu Sans Mono", monospace;
+}
+
+.code-editor.highlight-on .code-input {
+  color: transparent;
+  caret-color: var(--page-fg);
+
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  min-height: 220px;
+  padding: 10px 12px;
+
+  resize: none;
+
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: transparent;
+
+  overflow: auto;
+
+  z-index: 1;
+}
+
+.code-editor.highlight-on:focus-within .code-highlight {
+  border-color: var(--focus-ring);
+}
+
+/* Offscreen textarea used for copying export text. */
+.code-input-offscreen {
+  position: absolute;
+  left: -99999px;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: 0;
+  resize: none;
+
+  color: var(--page-fg);
+  caret-color: var(--page-fg);
+}
+

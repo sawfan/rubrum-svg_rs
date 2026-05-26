@@ -1,0 +1,12 @@
+# Trunk config for rubrum_transit_viewer (WASM transit chart viewer).
+
+[build]
+target = "index.html"
+dist = "dist"
+public_url = "./"
+
+# Watch shared embedded TOML configs so `trunk serve` auto-rebuilds on changes.
+[watch]
+watch = ["../../../rubrum_render_rs/config"]
+
+

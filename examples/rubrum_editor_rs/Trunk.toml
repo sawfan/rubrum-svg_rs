@@ -1,0 +1,7 @@
+[build]
+target = "index.html"
+dist = "dist"
+# Use a relative public URL so dist/ can be opened directly (file://) or served from a subpath
+# without breaking hashed asset URLs (CSS/JS/WASM).
+public_url = "./"
+

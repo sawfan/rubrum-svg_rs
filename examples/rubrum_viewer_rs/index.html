@@ -1,0 +1,636 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>rubrum_svg_viewer</title>
+    <link data-trunk rel="css" href="style.css" />
+    <link data-trunk rel="copy-dir" href="public" />
+    <link data-trunk rel="rust" href="Cargo.toml" data-wasm-opt="z" />
+  </head>
+
+  <body>
+    <header class="topbar">
+      <h1 class="app-title">rubrum_svg_viewer</h1>
+
+      <div class="topbar-right">
+        <label class="control">
+          <span>Theme</span>
+          <select id="theme">
+            <option value="dark" selected>dark</option>
+            <option value="light">light</option>
+          </select>
+        </label>
+
+        <button id="render_btn" type="button">Render</button>
+      </div>
+    </header>
+
+    <main class="main">
+      <div id="error" class="error" style="display: none"></div>
+
+      <section class="chart">
+
+    <!-- Inline the glyph sprite sheet so fragment-only <use href="#rb-sign-aries"> works
+         reliably across browsers (Firefox can reject external sprite references). -->
+    <svg xmlns="http://www.w3.org/2000/svg" style="display: none">
+      <defs id="inline_sprite_defs"></defs>
+    </svg>
+
+        <h2>Chart output</h2>
+        <div id="chart"></div>
+      </section>
+
+      <section>
+        <h2>Glyph sprite sheet (signs)</h2>
+        <p class="note">
+          This renders the 12 zodiac sign symbols from the inlined sprite sheet via
+          <code>&lt;use href="#rb-sign-aries"&gt;</code>.
+          The sprite is fetched from <code>./public/glyphs_white.svg</code> and its <code>&lt;defs&gt;</code>
+          are injected into the document so all glyphs can be referenced by fragment only.
+        </p>
+        <div class="sprite-grid" id="sprite_grid"></div>
+      </section>
+
+      <section>
+        <h2>Sign glyph comparison</h2>
+        <p class="note">
+          Side-by-side: (1) raw <code>&lt;symbol&gt;</code> metadata from the sprite,
+          (2) debug panel <code>&lt;use&gt;</code> rendering,
+          (3) the same sign label <code>&lt;use&gt;</code> found inside the chart SVG.
+          Rows can be sorted/highlighted by “raw rendered center delta” (how far the glyph’s
+          content bbox center is from the middle of a 12×12 render box).
+        </p>
+
+        <div class="compare-controls">
+          <label class="control-inline">
+            <span>Sort</span>
+            <select id="compare_sort">
+              <option value="raw_delta_desc" selected>raw Δ desc</option>
+              <option value="raw_delta_asc">raw Δ asc</option>
+              <option value="tracking_err_desc">tracking err desc</option>
+              <option value="id">id</option>
+            </select>
+          </label>
+
+          <label class="control-inline">
+            <span>Highlight if raw Δ ≥</span>
+            <input id="compare_threshold" type="number" min="0" step="0.05" value="0.25" />
+          </label>
+        </div>
+
+        <div class="compare-grid" id="compare_grid"></div>
+      </section>
+    </main>
+
+    <script type="module">
+      function byId(id) {
+        const el = document.getElementById(id);
+        if (!el) throw new Error(`missing element #${id}`);
+        return el;
+      }
+
+      function showError(err) {
+        const el = byId("error");
+        el.style.display = "block";
+        el.textContent = String(err?.stack || err);
+      }
+
+      function clearError() {
+        const el = byId("error");
+        el.style.display = "none";
+        el.textContent = "";
+      }
+
+      function currentTheme() {
+        return byId("theme").value;
+      }
+
+      function createSvgEl(tag) {
+        return document.createElementNS("http://www.w3.org/2000/svg", tag);
+      }
+
+      function renderSpriteGrid({ spriteUrl, symbolIds }) {
+        const grid = byId("sprite_grid");
+        grid.textContent = "";
+
+        // `spriteUrl` is ignored here on purpose: the sprite is inlined into the document so all
+        // glyphs can be referenced via fragment-only hrefs.
+        for (const symbolId of symbolIds) {
+          const cell = document.createElement("div");
+          cell.className = "sprite-cell";
+
+          const label = document.createElement("div");
+          label.className = "sprite-label";
+          label.textContent = symbolId;
+
+          const svg = createSvgEl("svg");
+          svg.setAttribute("viewBox", "0 0 12 12");
+          svg.setAttribute("width", "72");
+          svg.setAttribute("height", "72");
+
+          const use = createSvgEl("use");
+          const href = `#${symbolId}`;
+          use.setAttribute("href", href);
+          use.setAttributeNS("http://www.w3.org/1999/xlink", "xlink:href", href);
+          use.setAttribute("x", "0");
+          use.setAttribute("y", "0");
+          use.setAttribute("width", "12");
+          use.setAttribute("height", "12");
+          use.setAttribute("preserveAspectRatio", "xMidYMid meet");
+
+          svg.appendChild(use);
+          cell.appendChild(svg);
+          cell.appendChild(label);
+          grid.appendChild(cell);
+        }
+      }
+
+      function prettyXmlSnippet(xml, maxLen = 500) {
+        const s = String(xml).trim().replaceAll(/\s+/g, " ");
+        if (s.length <= maxLen) return s;
+        return `${s.slice(0, maxLen)}…`;
+      }
+
+      function parseViewBox(symbolEl) {
+        const vb = symbolEl.getAttribute("viewBox") || "";
+        const parts = vb
+          .split(/[ ,]+/)
+          .map((x) => x.trim())
+          .filter(Boolean)
+          .map((x) => Number(x));
+
+        if (parts.length !== 4 || parts.some((x) => Number.isNaN(x))) return null;
+        return { x: parts[0], y: parts[1], w: parts[2], h: parts[3] };
+      }
+
+      function fmtNum(n) {
+        if (typeof n !== "number" || Number.isNaN(n)) return "?";
+        return n.toFixed(2);
+      }
+
+      function attrsToText(el) {
+        const attrs = Array.from(el.attributes)
+          .map((a) => `${a.name}="${a.value}"`)
+          .sort();
+        return attrs.join("\n");
+      }
+
+      function safeBBox(el) {
+        try {
+          const b = el.getBBox();
+          return { x: b.x, y: b.y, w: b.width, h: b.height };
+        } catch {
+          return null;
+        }
+      }
+
+      function renderUseIntoBox({ spriteUrl, symbolId, width = 96, height = 96 }) {
+        const svg = createSvgEl("svg");
+        svg.setAttribute("viewBox", "0 0 12 12");
+        svg.setAttribute("width", String(width));
+        svg.setAttribute("height", String(height));
+
+        const use = createSvgEl("use");
+        const href = `#${symbolId}`;
+        use.setAttribute("href", href);
+        use.setAttributeNS("http://www.w3.org/1999/xlink", "xlink:href", href);
+        use.setAttribute("x", "0");
+        use.setAttribute("y", "0");
+        use.setAttribute("width", "12");
+        use.setAttribute("height", "12");
+        use.setAttribute("preserveAspectRatio", "xMidYMid meet");
+
+        svg.appendChild(use);
+        return { svg, use };
+      }
+
+      async function loadSpriteSymbols(spriteUrl, symbolIds) {
+        const res = await fetch(spriteUrl);
+        if (!res.ok) {
+          throw new Error(`failed to fetch sprite ${spriteUrl}: ${res.status}`);
+        }
+        const text = await res.text();
+
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(text, "image/svg+xml");
+
+        const parseErr = doc.querySelector("parsererror");
+        if (parseErr) {
+          throw new Error(
+            `sprite XML parse error for ${spriteUrl}: ${parseErr.textContent?.trim() || "(unknown)"}`
+          );
+        }
+
+        // Also inline the <defs> into this document so we can use fragment-only hrefs.
+        const inlineDefs = byId("inline_sprite_defs");
+        inlineDefs.textContent = "";
+        const defs = doc.querySelector("svg > defs") || doc.querySelector("defs");
+        if (defs) {
+          inlineDefs.innerHTML = defs.innerHTML;
+        } else {
+          throw new Error(`sprite has no <defs>: ${spriteUrl}`);
+        }
+
+        const out = new Map();
+        for (const id of symbolIds) {
+          const sym = doc.getElementById(id);
+          if (sym) out.set(id, sym);
+        }
+
+        return { xmlText: text, doc, symbolsById: out };
+      }
+
+      function renderCompareGrid({ spriteUrl, symbolIds, spriteSymbolsById }) {
+        const grid = byId("compare_grid");
+        grid.textContent = "";
+
+        const chartRoot = byId("chart").querySelector("svg");
+
+        const sortMode = byId("compare_sort")?.value || "raw_delta_desc";
+        const threshold = Number(byId("compare_threshold")?.value || 0);
+
+        function numAttr(el, name) {
+          const v = el?.getAttribute(name);
+          if (v == null) return null;
+          const n = Number(v);
+          return Number.isFinite(n) ? n : null;
+        }
+
+        function mag(dx, dy) {
+          if (!Number.isFinite(dx) || !Number.isFinite(dy)) return null;
+          return Math.sqrt(dx * dx + dy * dy);
+        }
+
+        // First pass: compute metrics for sorting/tracking.
+        const entries = [];
+        for (const symbolId of symbolIds) {
+          const sym = spriteSymbolsById.get(symbolId);
+          const vb = sym ? parseViewBox(sym) : null;
+
+          // Compute raw content bbox center delta by rendering into a 12x12 box.
+          let rawDx = null;
+          let rawDy = null;
+          let rawMag = null;
+          let rawBBox = null;
+
+          if (sym && vb) {
+            const { svg: rawSvg, use: rawUse } = renderUseIntoBox({
+              spriteUrl,
+              symbolId,
+              width: 1,
+              height: 1,
+            });
+            rawSvg.classList.add("hidden-measure");
+            document.body.appendChild(rawSvg);
+
+            rawBBox = safeBBox(rawUse);
+            rawSvg.remove();
+
+            if (rawBBox) {
+              const bboxCx = rawBBox.x + rawBBox.w / 2;
+              const bboxCy = rawBBox.y + rawBBox.h / 2;
+              const vbCx = vb.x + vb.w / 2;
+              const vbCy = vb.y + vb.h / 2;
+              rawDx = bboxCx - vbCx;
+              rawDy = bboxCy - vbCy;
+              rawMag = mag(rawDx, rawDy);
+            }
+          }
+
+          // Chart-side delta: how far the rendered bbox center is from the <use> box center.
+          const chartUse = chartRoot
+            ? chartRoot.querySelector(
+                `use.rb-sign-label-glyph[href$="#${symbolId}"], use.rb-sign-label-glyph[xlink\\:href$="#${symbolId}"]`
+              )
+            : null;
+
+          let chartDx = null;
+          let chartDy = null;
+          let chartMag = null;
+          let chartBBox = null;
+
+          let predictedDx = null;
+          let predictedDy = null;
+          let trackingErrMag = null;
+
+          if (chartUse && vb && rawDx != null && rawDy != null) {
+            chartBBox = safeBBox(chartUse);
+            const useX = numAttr(chartUse, "x");
+            const useY = numAttr(chartUse, "y");
+            const useW = numAttr(chartUse, "width");
+            const useH = numAttr(chartUse, "height");
+
+            if (chartBBox && useX != null && useY != null && useW != null && useH != null) {
+              const bboxCx = chartBBox.x + chartBBox.w / 2;
+              const bboxCy = chartBBox.y + chartBBox.h / 2;
+              const useCx = useX + useW / 2;
+              const useCy = useY + useH / 2;
+              chartDx = bboxCx - useCx;
+              chartDy = bboxCy - useCy;
+              chartMag = mag(chartDx, chartDy);
+
+              // Predict chart-space delta from raw symbol-space delta.
+              // We assume xMidYMid meet (uniform scale).
+              const sx = useW / vb.w;
+              const sy = useH / vb.h;
+              const s = Math.min(sx, sy);
+              predictedDx = rawDx * s;
+              predictedDy = rawDy * s;
+              const errDx = chartDx - predictedDx;
+              const errDy = chartDy - predictedDy;
+              trackingErrMag = mag(errDx, errDy);
+            }
+          }
+
+          entries.push({
+            symbolId,
+            sym,
+            vb,
+            rawBBox,
+            rawDx,
+            rawDy,
+            rawMag,
+            chartUse,
+            chartBBox,
+            chartDx,
+            chartDy,
+            chartMag,
+            predictedDx,
+            predictedDy,
+            trackingErrMag,
+          });
+        }
+
+        // Sort.
+        const byNumDesc = (a, b) => (b ?? -Infinity) - (a ?? -Infinity);
+        const byNumAsc = (a, b) => (a ?? Infinity) - (b ?? Infinity);
+
+        entries.sort((a, b) => {
+          switch (sortMode) {
+            case "raw_delta_asc":
+              return byNumAsc(a.rawMag, b.rawMag);
+            case "tracking_err_desc":
+              return byNumDesc(a.trackingErrMag, b.trackingErrMag);
+            case "id":
+              return a.symbolId.localeCompare(b.symbolId);
+            case "raw_delta_desc":
+            default:
+              return byNumDesc(a.rawMag, b.rawMag);
+          }
+        });
+
+        // Second pass: build DOM in sorted order.
+        for (const entry of entries) {
+          const symbolId = entry.symbolId;
+
+          const row = document.createElement("div");
+          row.className = "compare-row";
+          if (entry.rawMag != null && entry.rawMag >= threshold) {
+            row.classList.add("compare-row-flagged");
+          }
+
+          const header = document.createElement("div");
+          header.className = "compare-row-header";
+          header.textContent = symbolId;
+          row.appendChild(header);
+
+          // Column 1: raw symbol metadata + bbox analysis.
+          const colRaw = document.createElement("div");
+          colRaw.className = "compare-col";
+
+          const sym = entry.sym;
+          const vb = entry.vb;
+          const hasText = sym ? sym.getElementsByTagName("text").length > 0 : false;
+          const pathCount = sym ? sym.getElementsByTagName("path").length : 0;
+
+          const rawMeta = document.createElement("pre");
+          rawMeta.className = "meta";
+
+          if (!sym) {
+            rawMeta.textContent = "Missing <symbol> in sprite sheet.";
+          } else {
+            const vbTxt = vb
+              ? `viewBox=${fmtNum(vb.x)} ${fmtNum(vb.y)} ${fmtNum(vb.w)} ${fmtNum(vb.h)}`
+              : `viewBox=(missing)`;
+
+            let bboxTxt = "bbox=(unavailable)";
+            let centerTxt = "center delta=(unavailable)";
+            let magTxt = "|delta|=(unavailable)";
+
+            if (entry.rawBBox && vb && entry.rawDx != null && entry.rawDy != null) {
+              const bbox = entry.rawBBox;
+              bboxTxt = `bbox=${fmtNum(bbox.x)} ${fmtNum(bbox.y)} ${fmtNum(bbox.w)} ${fmtNum(bbox.h)}`;
+              centerTxt = `center delta dx=${fmtNum(entry.rawDx)} dy=${fmtNum(entry.rawDy)}`;
+              magTxt = `|delta|=${fmtNum(entry.rawMag ?? NaN)}`;
+            }
+
+            rawMeta.textContent = [
+              vbTxt,
+              `content: paths=${pathCount} text=${hasText}`,
+              bboxTxt,
+              centerTxt,
+              magTxt,
+              "\n<symbol snippet>",
+              prettyXmlSnippet(sym.outerHTML, 700),
+            ].join("\n");
+          }
+
+          colRaw.appendChild(rawMeta);
+
+          // Column 2: debug panel render (direct <use>).
+          const colDebug = document.createElement("div");
+          colDebug.className = "compare-col";
+          const { svg: debugSvg, use: debugUse } = renderUseIntoBox({ spriteUrl, symbolId });
+          debugSvg.classList.add("compare-svg");
+
+          const debugMeta = document.createElement("pre");
+          debugMeta.className = "meta";
+          debugMeta.textContent = ["<use attrs>", attrsToText(debugUse)].join("\n");
+
+          colDebug.appendChild(debugSvg);
+          colDebug.appendChild(debugMeta);
+
+          // Column 3: chart-rendered <use> (attrs + a cloned preview).
+          const colChart = document.createElement("div");
+          colChart.className = "compare-col";
+
+          const chartUse = entry.chartUse;
+          const chartMeta = document.createElement("pre");
+          chartMeta.className = "meta";
+
+          if (!chartUse) {
+            chartMeta.textContent = "Chart: sign <use> not found.";
+          } else {
+            // Preview: keep chart's width/height/preserveAspectRatio/transform, but normalize x/y.
+            const previewSvg = createSvgEl("svg");
+            previewSvg.setAttribute("viewBox", "0 0 12 12");
+            previewSvg.setAttribute("width", "96");
+            previewSvg.setAttribute("height", "96");
+            previewSvg.classList.add("compare-svg");
+
+            const previewUse = createSvgEl("use");
+            const href =
+              chartUse.getAttribute("href") || chartUse.getAttribute("xlink:href") || "";
+            previewUse.setAttribute("href", href);
+            previewUse.setAttributeNS("http://www.w3.org/1999/xlink", "xlink:href", href);
+            previewUse.setAttribute("x", "0");
+            previewUse.setAttribute("y", "0");
+            previewUse.setAttribute("width", chartUse.getAttribute("width") || "12");
+            previewUse.setAttribute("height", chartUse.getAttribute("height") || "12");
+
+            const par = chartUse.getAttribute("preserveAspectRatio");
+            if (par) previewUse.setAttribute("preserveAspectRatio", par);
+
+            const tf = chartUse.getAttribute("transform");
+            if (tf) previewUse.setAttribute("transform", tf);
+
+            previewSvg.appendChild(previewUse);
+            colChart.appendChild(previewSvg);
+
+            const chartDeltaTxt =
+              entry.chartDx != null && entry.chartDy != null
+                ? `chart center delta dx=${fmtNum(entry.chartDx)} dy=${fmtNum(entry.chartDy)} |delta|=${fmtNum(entry.chartMag ?? NaN)}`
+                : "chart center delta=(unavailable)";
+
+            const predictedTxt =
+              entry.predictedDx != null && entry.predictedDy != null
+                ? `predicted dx=${fmtNum(entry.predictedDx)} dy=${fmtNum(entry.predictedDy)}`
+                : "predicted=(unavailable)";
+
+            const trackingTxt =
+              entry.trackingErrMag != null
+                ? `tracking err |Δ|=${fmtNum(entry.trackingErrMag)}`
+                : "tracking err=(unavailable)";
+
+            chartMeta.textContent = [
+              "<use attrs>",
+              attrsToText(chartUse),
+              "\nchart use bbox (in chart coords):",
+              JSON.stringify(safeBBox(chartUse)),
+              "\ntracking:",
+              chartDeltaTxt,
+              predictedTxt,
+              trackingTxt,
+            ].join("\n");
+          }
+
+          colChart.appendChild(chartMeta);
+
+          row.appendChild(colRaw);
+          row.appendChild(colDebug);
+          row.appendChild(colChart);
+          grid.appendChild(row);
+        }
+      }
+
+      const SIGNS = [
+        "rb-sign-aries",
+        "rb-sign-taurus",
+        "rb-sign-gemini",
+        "rb-sign-cancer",
+        "rb-sign-leo",
+        "rb-sign-virgo",
+        "rb-sign-libra",
+        "rb-sign-scorpio",
+        "rb-sign-sagittarius",
+        "rb-sign-capricorn",
+        "rb-sign-aquarius",
+        "rb-sign-pisces",
+      ];
+
+      async function main() {
+        try {
+          clearError();
+
+          const renderBtn = byId("render_btn");
+          const bindings = window.wasmBindings;
+          if (!bindings) {
+            throw new Error(
+              "missing wasm bindings (expected window.wasmBindings; check Trunk and wasm-bindgen exports)"
+            );
+          }
+
+          // Trunk copies `public/` into `dist/public/` (via `copy-dir`), so the sprite is served
+          // at `./public/glyphs_white.svg`.
+          const spriteUrl = "./public/glyphs_white.svg";
+          const sprite = await loadSpriteSymbols(spriteUrl, SIGNS);
+
+          function getEmbeddedTomls() {
+            return bindings.embedded_natal_tomls();
+          }
+
+          function renderChart() {
+            const tomls = getEmbeddedTomls();
+            const themeToml =
+              currentTheme() === "light" ? tomls.theme_light_toml : tomls.theme_dark_toml;
+
+            const svg = bindings.render_natal_svg(
+              themeToml,
+              tomls.layout_toml,
+              tomls.data_toml,
+              tomls.rules_toml
+            );
+
+            byId("chart").innerHTML = svg;
+          }
+
+          function renderAll() {
+            renderChart();
+            renderSpriteGrid({ spriteUrl, symbolIds: SIGNS });
+            renderCompareGrid({
+              spriteUrl,
+              symbolIds: SIGNS,
+              spriteSymbolsById: sprite.symbolsById,
+            });
+          }
+
+          renderBtn.addEventListener("click", () => {
+            try {
+              clearError();
+              renderAll();
+            } catch (err) {
+              showError(err);
+            }
+          });
+
+          byId("theme").addEventListener("change", () => {
+            try {
+              clearError();
+              renderAll();
+            } catch (err) {
+              showError(err);
+            }
+          });
+
+          function rerenderCompareOnly() {
+            try {
+              clearError();
+              renderCompareGrid({
+                spriteUrl,
+                symbolIds: SIGNS,
+                spriteSymbolsById: sprite.symbolsById,
+              });
+            } catch (err) {
+              showError(err);
+            }
+          }
+
+          byId("compare_sort").addEventListener("change", rerenderCompareOnly);
+          byId("compare_threshold").addEventListener("input", rerenderCompareOnly);
+
+          // Initial render.
+          renderAll();
+        } catch (err) {
+          showError(err);
+        }
+      }
+
+      // Trunk loads the wasm and then triggers this event.
+      window.addEventListener("TrunkApplicationStarted", () => {
+        main();
+      });
+    </script>
+  </body>
+</html>
+

@@ -1,0 +1,145 @@
+:root {
+  --bg: #111216;
+  --fg: #e8e8e8;
+  --muted: #9a9a9a;
+  --panel: #1a1b22;
+  --border: rgba(255, 255, 255, 0.12);
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    Helvetica,
+    Arial;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 14px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+
+.app-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.app-subtitle {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.topbar-left {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+button {
+  font-size: 12px;
+  color: var(--fg);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.main {
+  padding: 14px;
+}
+
+.error {
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 90, 90, 0.5);
+  background: rgba(255, 90, 90, 0.08);
+  border-radius: 8px;
+  white-space: pre-wrap;
+  margin-bottom: 12px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+@media (max-width: 1100px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.panel {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+  padding: 10px;
+  min-height: 220px;
+}
+
+.panel-title {
+  margin: 0 0 8px 0;
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.chart {
+  width: min(760px, 100%);
+  margin: 0 auto;
+}
+
+.chart svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.editor {
+  width: 100%;
+  height: 380px;
+  resize: vertical;
+  box-sizing: border-box;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--fg);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+    "Courier New", monospace;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.editor-small {
+  height: 180px;
+}
+
