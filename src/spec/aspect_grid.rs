@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 
 use rubrum::aspect::compute_aspects_natal;
 use rubrum::{AspectEndpointId, AspectRules, DegreeAspectKind, EndpointKey, House, Occupant};
+use rubrum_render::aspects::resolve_aspect_stroke_style;
 use rubrum_render::chart_data::{ChartData, HouseCuspData};
 use rubrum_render::error::ChartRenderError;
 use rubrum_render::glyph_paint::{
@@ -233,31 +234,27 @@ fn sign_symbol_href(theme: &Theme, sign: rubrum::Sign) -> Option<String> {
 }
 
 fn aspect_kind_color(theme: &Theme, kind: &DegreeAspectKind) -> RgbaColor {
-    if let Some(style) = theme.aspects.kind_styles.iter().find(|s| s.kind == *kind)
-        && let Some(color) = style.stroke.color
-    {
-        return color;
-    }
-
-    if let Some(color) = theme.aspects.stroke.color {
-        return color;
-    }
-
-    match *kind {
-        DegreeAspectKind::Trine | DegreeAspectKind::Sextile => RgbaColor {
-            r: 0.16,
-            g: 0.36,
-            b: 0.85,
-            a: 1.0,
+    resolve_aspect_stroke_style(
+        &theme.aspects,
+        kind,
+        match kind {
+            DegreeAspectKind::Trine | DegreeAspectKind::Sextile => RgbaColor {
+                r: 0.16,
+                g: 0.36,
+                b: 0.85,
+                a: 1.0,
+            },
+            DegreeAspectKind::Square | DegreeAspectKind::Opposition => RgbaColor {
+                r: 0.85,
+                g: 0.18,
+                b: 0.18,
+                a: 1.0,
+            },
+            _ => theme.effective_text_color(),
         },
-        DegreeAspectKind::Square | DegreeAspectKind::Opposition => RgbaColor {
-            r: 0.85,
-            g: 0.18,
-            b: 0.18,
-            a: 1.0,
-        },
-        _ => theme.effective_text_color(),
-    }
+        theme.cairo.stroke_width,
+    )
+    .color
 }
 
 fn occupant_sort_key(occ: Occupant) -> (i32, i32) {

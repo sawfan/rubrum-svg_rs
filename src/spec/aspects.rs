@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use rubrum::AspectRules;
+use rubrum_render::aspects::{aspect_kind_group, resolve_aspect_stroke_style};
 use rubrum_render::chart_data::ChartData;
 use rubrum_render::core::geometry::{normalize_deg, polar_to_xy};
 use rubrum_render::core::lane_radii;
@@ -9,7 +10,7 @@ use rubrum_render::layout::{GlyphLaneMode, Layout};
 use rubrum_render::options::RgbaColor;
 use rubrum_render::theme::Theme;
 
-use crate::primitive::{escape_xml_attr, rgba_css};
+use crate::primitive::{canonical_key_to_css_token as key_to_css_token, escape_xml_attr, rgba_css};
 
 /// Render aspects for a layout lane configured as `GlyphLaneMode::CrossAspects` **or**
 /// `GlyphLaneMode::Aspects` with `other_dataset` set.
@@ -132,21 +133,6 @@ pub fn render_cross_dataset_aspects_svg_group(
         rules,
     );
 
-    let stroke_width = theme
-        .aspects
-        .stroke
-        .width
-        .unwrap_or(theme.cairo.stroke_width)
-        .max(0.1);
-
-    let stroke_alpha = theme.aspects.stroke.alpha.unwrap_or(1.0).clamp(0.0, 1.0);
-
-    // Use the default text color as a reasonable fallback for aspect lines.
-    let mut stroke_color = default_text_color;
-    stroke_color.a *= stroke_alpha;
-
-    let stroke_css = rgba_css(stroke_color);
-
     let mut out = String::new();
     out.push_str("  <g id=\"rb-aspects\">\n");
 
@@ -193,12 +179,45 @@ pub fn render_cross_dataset_aspects_svg_group(
         let (x1, y1) = polar_to_xy(cx, cy, r_0, a_deg);
         let (x2, y2) = polar_to_xy(cx, cy, r_1, b_deg);
 
+        let kind = edge.kind;
+        let kind_key = kind.canonical_key();
+        let kind_token = key_to_css_token(kind_key);
+        let kind_group = aspect_kind_group(&kind);
+        let kind_group_key = match kind_group {
+            rubrum_render::aspects::AspectKindGroup::Hard => "hard",
+            rubrum_render::aspects::AspectKindGroup::Soft => "soft",
+            rubrum_render::aspects::AspectKindGroup::Neutral => "neutral",
+            rubrum_render::aspects::AspectKindGroup::Minor => "minor",
+        };
+        let stroke_style = resolve_aspect_stroke_style(
+            &theme.aspects,
+            &kind,
+            default_text_color,
+            theme.cairo.stroke_width,
+        );
+        let stroke_css = rgba_css(stroke_style.color);
+        let stroke_width = stroke_style.width;
+        let dash_attr = stroke_style
+            .dash
+            .as_deref()
+            .and_then(rubrum_render::svg::fmt_stroke_dasharray_attr)
+            .unwrap_or_default();
+        let linecap_attr = stroke_style
+            .linecap
+            .map(|linecap| {
+                format!(
+                    " stroke-linecap=\"{}\"",
+                    rubrum_render::svg::fmt_stroke_linecap_attr(linecap)
+                )
+            })
+            .unwrap_or_default();
+
         // Stable data attributes for downstream selection.
         let a_attr = escape_xml_attr(qid_0.as_str());
         let b_attr = escape_xml_attr(qid_1.as_str());
 
         out.push_str(&format!(
-            "    <line x1=\"{x1:.3}\" y1=\"{y1:.3}\" x2=\"{x2:.3}\" y2=\"{y2:.3}\" stroke=\"{stroke_css}\" stroke-width=\"{stroke_width:.3}\" data-rb-endpoint-a=\"{a_attr}\" data-rb-endpoint-b=\"{b_attr}\" />\n"
+            "    <line class=\"rb-aspect rb-aspect-{kind_token} rb-aspect-group-{kind_group_key}\" x1=\"{x1:.3}\" y1=\"{y1:.3}\" x2=\"{x2:.3}\" y2=\"{y2:.3}\" stroke=\"{stroke_css}\" stroke-width=\"{stroke_width:.3}\"{dash_attr}{linecap_attr} data-rb-aspect-kind=\"{kind_key}\" data-rb-aspect-group=\"{kind_group_key}\" data-rb-endpoint-a=\"{a_attr}\" data-rb-endpoint-b=\"{b_attr}\" />\n"
         ));
     }
 
