@@ -1,6 +1,9 @@
-use crate::primitive::{canonical_key_to_css_token as key_to_css_token, escape_xml_attr, rgba_css};
+use crate::primitive::{canonical_key_to_css_token as key_to_css_token, escape_xml_attr};
 use rubrum::{House, Occupant};
 use rubrum_render::core::geometry::{normalize_deg, polar_to_xy};
+use rubrum_render::glyph_paint::{
+    GlyphPaint, resolve_occupant_glyph_paint, resolve_sign_glyph_paint, sign_element,
+};
 use rubrum_render::glyphs::{
     angle_svg_symbol_id, body_svg_symbol_id, chart_point_svg_symbol_id, occupant_label,
     sign_svg_symbol_id,
@@ -15,7 +18,7 @@ use rubrum_render::style::resolve_lane_style;
 use rubrum_render::theme::Theme;
 use rubrum_render::{chart_data::ChartData, error::ChartRenderError};
 
-use super::emit::{push_hit_circle, push_text, push_use};
+use super::emit::{glyph_paint_attrs, push_hit_circle, push_text, push_use};
 
 fn segment_spec_from_input(
     seg: &PlacementLabelSegmentInput,
@@ -258,9 +261,13 @@ pub fn render_lane_glyphs(
                 push_hit_circle(out, x, y, hit_r, "rb-placement-hit");
 
                 if let Some(href) = sprite_href.as_deref() {
-                    // Use CSS classes so downstream consumers can style glyphs.
+                    let paint = resolve_occupant_glyph_paint(theme, occupant, text_color);
+                    let paint_attrs = glyph_paint_attrs(paint);
                     let use_extra = format!(
-                        "data-rb-endpoint=\"{occupant_key_attr}\" data-rb-occupant=\"{occupant_key_attr}\" data-rb-occupant-type=\"{occupant_type}\""
+                        "data-rb-endpoint=\"{occupant_key_attr}\" data-rb-occupant=\"{occupant_key_attr}\" data-rb-occupant-type=\"{occupant_type}\" {paint_attrs}"
+                    );
+                    let class = format!(
+                        "rb-occupant rb-occupant-glyph rb-occupant-{occupant_key_token} rb-occupant-type-{occupant_type}"
                     );
                     push_use(
                         out,
@@ -268,7 +275,7 @@ pub fn render_lane_glyphs(
                         x,
                         y,
                         symbol_size,
-                        "rb-occupant rb-occupant-glyph",
+                        class.as_str(),
                         Some(use_extra.as_str()),
                     );
                 } else {
@@ -454,19 +461,31 @@ pub fn render_lane_glyphs(
                                 .unwrap_or(derived_size)
                                 .max(1.0);
 
-                            let glyph_color = glyph_style
-                                .as_ref()
-                                .and_then(|s| s.color)
-                                .unwrap_or(seg_color);
+                            let mut paint = resolve_sign_glyph_paint(theme, sign, seg_color);
+                            if let Some(glyph_style) = glyph_style.as_ref()
+                                && let Some(color) = glyph_style.color
+                            {
+                                paint = GlyphPaint::monochrome(color).overlay(paint);
+                            }
 
                             if let Some(sprite_base) = sprite_url {
                                 let symbol_id = sign_svg_symbol_id(sign);
                                 let href = format!("{sprite_base}#{symbol_id}");
 
-                                // Note: whether fill/stroke tinting works depends on the sprite assets.
-                                let color_attr = rgba_css(glyph_color);
+                                let sign_key = sign.canonical_key();
+                                let sign_key_token = key_to_css_token(sign_key);
+                                let element = sign_element(sign);
+                                let element_key = element.canonical_key();
+                                let element_key_token = key_to_css_token(element_key);
+                                let paint_attrs = glyph_paint_attrs(paint);
                                 let extra = format!(
-                                    "data-rb-label-seg=\"{j}\" data-rb-label-kind=\"sign-glyph\" fill=\"{color_attr}\" stroke=\"{color_attr}\""
+                                    "data-rb-label-seg=\"{j}\" data-rb-label-kind=\"sign-glyph\" data-rb-sign=\"{}\" data-rb-sign-element=\"{}\" {}",
+                                    escape_xml_attr(sign_key),
+                                    escape_xml_attr(element_key),
+                                    paint_attrs
+                                );
+                                let class = format!(
+                                    "rb-placement-label rb-placement-label-sign-glyph rb-sign-{sign_key_token} rb-sign-element-{element_key_token}"
                                 );
 
                                 push_use(
@@ -475,10 +494,11 @@ pub fn render_lane_glyphs(
                                     lx,
                                     ly,
                                     size,
-                                    "rb-placement-label rb-placement-label-sign-glyph",
+                                    class.as_str(),
                                     Some(extra.as_str()),
                                 );
                             } else {
+                                let glyph_color = paint.color.unwrap_or(seg_color);
                                 push_text(
                                     out,
                                     lx,
