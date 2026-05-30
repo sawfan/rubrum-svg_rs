@@ -4,6 +4,9 @@ use rubrum::aspect::compute_aspects_natal;
 use rubrum::{AspectEndpointId, AspectRules, DegreeAspectKind, EndpointKey, House, Occupant};
 use rubrum_render::chart_data::{ChartData, HouseCuspData};
 use rubrum_render::error::ChartRenderError;
+use rubrum_render::glyph_paint::{
+    GlyphPaint, resolve_occupant_glyph_paint, resolve_sign_glyph_paint, sign_element,
+};
 use rubrum_render::glyphs::{
     angle_svg_symbol_id, body_svg_symbol_id, chart_point_svg_symbol_id, occupant_label,
     sign_svg_symbol_id,
@@ -15,7 +18,9 @@ use svg::Document;
 use svg::node::Text as TextNode;
 use svg::node::element::{Group, Rectangle, Text, Use};
 
-use crate::primitive::{rgba_css, rgba_css_var as rgba_css_var_prim};
+use crate::primitive::{
+    canonical_key_to_css_token as key_to_css_token, rgba_css, rgba_css_var as rgba_css_var_prim,
+};
 
 fn aspect_grid_canvas_bg(theme: &Theme) -> RgbaColor {
     if let Some(palette) = theme.svg.aspect_grid {
@@ -227,39 +232,18 @@ fn sign_symbol_href(theme: &Theme, sign: rubrum::Sign) -> Option<String> {
     Some(format!("{sprite}#{symbol_id}"))
 }
 
-fn default_body_color(occupant: Occupant, fallback: RgbaColor) -> RgbaColor {
-    // A compact default palette meant to roughly match the classic "red/blue/green" look.
-    //
-    // This is intentionally simple and can be overridden downstream via CSS.
-    match occupant {
-        Occupant::Body(rubrum::Body::Sun)
-        | Occupant::Body(rubrum::Body::Mars)
-        | Occupant::Body(rubrum::Body::Pluto) => RgbaColor {
-            r: 0.85,
-            g: 0.20,
-            b: 0.20,
-            a: 1.0,
-        },
-        Occupant::Body(rubrum::Body::Moon)
-        | Occupant::Body(rubrum::Body::Uranus)
-        | Occupant::Body(rubrum::Body::Neptune) => RgbaColor {
-            r: 0.18,
-            g: 0.35,
-            b: 0.85,
-            a: 1.0,
-        },
-        Occupant::Body(rubrum::Body::Mercury) | Occupant::Body(rubrum::Body::Venus) => RgbaColor {
-            r: 0.20,
-            g: 0.65,
-            b: 0.25,
-            a: 1.0,
-        },
-        _ => fallback,
+fn aspect_kind_color(theme: &Theme, kind: &DegreeAspectKind) -> RgbaColor {
+    if let Some(style) = theme.aspects.kind_styles.iter().find(|s| s.kind == *kind)
+        && let Some(color) = style.stroke.color
+    {
+        return color;
     }
-}
 
-fn aspect_kind_color(kind: DegreeAspectKind) -> RgbaColor {
-    match kind {
+    if let Some(color) = theme.aspects.stroke.color {
+        return color;
+    }
+
+    match *kind {
         DegreeAspectKind::Trine | DegreeAspectKind::Sextile => RgbaColor {
             r: 0.16,
             g: 0.36,
@@ -272,12 +256,7 @@ fn aspect_kind_color(kind: DegreeAspectKind) -> RgbaColor {
             b: 0.18,
             a: 1.0,
         },
-        _ => RgbaColor {
-            r: 0.08,
-            g: 0.08,
-            b: 0.08,
-            a: 1.0,
-        },
+        _ => theme.effective_text_color(),
     }
 }
 
@@ -406,9 +385,76 @@ fn left_text_node(
     node
 }
 
-fn use_node(href: &str, x: f64, y: f64, size: f64, class_attr: &str) -> Use {
+fn glyph_color_css(paint: GlyphPaint, fallback: RgbaColor) -> String {
+    rgba_css(
+        paint
+            .color
+            .or(paint.fill)
+            .or(paint.stroke)
+            .unwrap_or(fallback),
+    )
+}
+
+fn apply_glyph_paint_attrs(mut node: Use, paint: GlyphPaint) -> Use {
+    if let Some(color) = paint.color {
+        let color_css = rgba_css(color);
+        node = node.set("color", color_css.clone()).set(
+            "style",
+            format!(
+                "--rb-glyph-color: {}; --rb-glyph-fill: {}; --rb-glyph-stroke: {};",
+                color_css,
+                paint
+                    .fill
+                    .map(rgba_css)
+                    .unwrap_or_else(|| color_css.clone()),
+                paint
+                    .stroke
+                    .map(rgba_css)
+                    .unwrap_or_else(|| color_css.clone())
+            ),
+        );
+    } else if paint.fill.is_some() || paint.stroke.is_some() {
+        let mut parts = Vec::new();
+        if let Some(fill) = paint.fill {
+            parts.push(format!("--rb-glyph-fill: {};", rgba_css(fill)));
+        }
+        if let Some(stroke) = paint.stroke {
+            parts.push(format!("--rb-glyph-stroke: {};", rgba_css(stroke)));
+        }
+        node = node.set("style", parts.join(" "));
+    }
+
+    if let Some(fill) = paint.fill.or(paint.color) {
+        node = node.set("fill", rgba_css(fill));
+    }
+    if let Some(stroke) = paint.stroke.or(paint.color) {
+        node = node.set("stroke", rgba_css(stroke));
+    }
+    if let Some(opacity) = paint.fill_opacity {
+        node = node.set("fill-opacity", opacity.clamp(0.0, 1.0));
+    }
+    if let Some(opacity) = paint.stroke_opacity {
+        node = node.set("stroke-opacity", opacity.clamp(0.0, 1.0));
+    }
+    if let Some(width) = paint.stroke_width
+        && width > 0.0
+    {
+        node = node.set("stroke-width", width);
+    }
+
+    node
+}
+
+fn use_node(
+    href: &str,
+    x: f64,
+    y: f64,
+    size: f64,
+    class_attr: &str,
+    paint: Option<GlyphPaint>,
+) -> Use {
     // Use `transform=translate(...)` for compatibility with earlier emitters.
-    Use::new()
+    let node = Use::new()
         .set("href", href)
         .set("xlink:href", href)
         .set("transform", format!("translate({x} {y})"))
@@ -416,7 +462,13 @@ fn use_node(href: &str, x: f64, y: f64, size: f64, class_attr: &str) -> Use {
         .set("height", size)
         .set("preserveAspectRatio", "xMidYMid meet")
         .set("overflow", "visible")
-        .set("class", class_attr)
+        .set("class", class_attr);
+
+    if let Some(paint) = paint {
+        apply_glyph_paint_attrs(node, paint)
+    } else {
+        node
+    }
 }
 
 /// Render an aspect grid ("aspect table") for a single dataset as a `svg::Document`.
@@ -591,15 +643,13 @@ pub fn aspect_grid_to_svg_group(
     for (i, row) in rows.iter().enumerate() {
         let y = y0 + (i as f64) * row_h;
 
-        let occ_color = default_body_color(
-            row.occupant,
-            theme
-                .dataset_colors
-                .get(opts.dataset_id)
-                .copied()
-                .unwrap_or(text_default),
-        );
-        let occ_color_css = rgba_css(occ_color);
+        let occupant_fallback = theme
+            .dataset_colors
+            .get(opts.dataset_id)
+            .copied()
+            .unwrap_or(text_default);
+        let occupant_paint = resolve_occupant_glyph_paint(theme, row.occupant, occupant_fallback);
+        let occ_color_css = glyph_color_css(occupant_paint, occupant_fallback);
 
         // Icon cell.
         group = group.add(rect_node(
@@ -620,9 +670,21 @@ pub fn aspect_grid_to_svg_group(
             let x_use = cx - size / 2.0;
             let y_use = cy - size / 2.0;
 
-            let node = use_node(href.as_str(), x_use, y_use, size, "rb-ag-occupant")
-                .set("fill", occ_color_css.clone())
-                .set("stroke", occ_color_css.clone());
+            let occupant_key_token = key_to_css_token(row.occupant.canonical_key());
+            let occupant_type = rubrum_render::glyph_paint::occupant_type_key(row.occupant);
+            let class = format!(
+                "rb-ag-occupant rb-occupant-{} rb-occupant-type-{}",
+                occupant_key_token,
+                key_to_css_token(occupant_type)
+            );
+            let node = use_node(
+                href.as_str(),
+                x_use,
+                y_use,
+                size,
+                class.as_str(),
+                Some(occupant_paint),
+            );
             group = group.add(node);
         } else {
             let sym = occupant_label(row.occupant);
@@ -686,7 +748,19 @@ pub fn aspect_grid_to_svg_group(
             let x_use = sign_x;
             let y_use = ty - size / 2.0;
 
-            group = group.add(use_node(href.as_str(), x_use, y_use, size, "rb-ag-sign"));
+            let sign_paint = resolve_sign_glyph_paint(theme, row.sign, text_default);
+            let sign_key_token = key_to_css_token(row.sign.canonical_key());
+            let element_key_token = key_to_css_token(sign_element(row.sign).canonical_key());
+            let class =
+                format!("rb-ag-sign rb-sign-{sign_key_token} rb-sign-element-{element_key_token}");
+            group = group.add(use_node(
+                href.as_str(),
+                x_use,
+                y_use,
+                size,
+                class.as_str(),
+                Some(sign_paint),
+            ));
 
             // Degree text after sign glyph.
             let deg_x = x_use + size + 6.0;
@@ -746,7 +820,7 @@ pub fn aspect_grid_to_svg_group(
             let b = &rows[j].endpoint_id;
             if let Some(kind) = aspect_map.get(&cell_id(a, b)).cloned() {
                 let sym = kind.symbol_text().to_string();
-                let c_css = rgba_css(aspect_kind_color(kind.clone()));
+                let c_css = rgba_css(aspect_kind_color(theme, &kind));
 
                 let cx = x + opts.cell_px / 2.0;
                 let cy = y + row_h / 2.0;
@@ -786,7 +860,21 @@ pub fn aspect_grid_to_svg_group(
                 let size = opts.glyph_font_size_px * 1.4;
                 let x_use = cx - size / 2.0;
                 let y_use = cy - size / 2.0;
-                group = group.add(use_node(href.as_str(), x_use, y_use, size, "rb-ag-axis"));
+                let occupant_key_token = key_to_css_token(row.occupant.canonical_key());
+                let occupant_type = rubrum_render::glyph_paint::occupant_type_key(row.occupant);
+                let class = format!(
+                    "rb-ag-axis rb-occupant-{} rb-occupant-type-{}",
+                    occupant_key_token,
+                    key_to_css_token(occupant_type)
+                );
+                group = group.add(use_node(
+                    href.as_str(),
+                    x_use,
+                    y_use,
+                    size,
+                    class.as_str(),
+                    Some(occupant_paint),
+                ));
             } else {
                 let sym = occupant_label(row.occupant);
                 group = group.add(centered_text_node(

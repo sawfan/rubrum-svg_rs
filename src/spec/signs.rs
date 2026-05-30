@@ -1,5 +1,6 @@
 use rubrum::Sign;
 use rubrum_render::core::geometry::{normalize_deg, polar_to_xy};
+use rubrum_render::glyph_paint::{resolve_sign_glyph_paint, sign_element};
 use rubrum_render::glyphs::sign_svg_symbol_id;
 use rubrum_render::layout::BandSpec;
 use rubrum_render::metadata::svg_data::{
@@ -9,8 +10,9 @@ use rubrum_render::options::RgbaColor;
 
 use crate::primitive::{
     canonical_key_to_css_token as key_to_css_token, escape_xml_attr, hit_line, line_extra,
-    rgba_css_var, text_centered, use_symbol,
+    text_centered, use_symbol,
 };
+use crate::spec::emit::glyph_paint_attrs;
 use rubrum_render::theme::Theme;
 
 use crate::primitive::push_svg_node;
@@ -133,12 +135,22 @@ pub fn render_signs(
                 let href = format!("{sprite_base}#{symbol_id}");
                 let size = options.sign_font_size.max(1.0) * 1.6;
 
-                // Note: fill/stroke tinting depends on the sprite's internal paint; we still emit
-                // color attributes for packs that inherit currentColor-style behavior.
-                let color_attr = rgba_css_var("--rb-chart-text", label_color);
+                let paint = resolve_sign_glyph_paint(theme, sign, label_color);
+                let paint_attrs = glyph_paint_attrs(paint);
+                let sign_key = sign.canonical_key();
+                let sign_key_token = key_to_css_token(sign_key);
+                let element = sign_element(sign);
+                let element_key = element.canonical_key();
+                let element_key_token = key_to_css_token(element_key);
                 let extra = format!(
-                    "data-rb-structure=\"sign-label\" data-rb-sign-index=\"{i}\" data-rb-deg=\"{:.3}\" fill=\"{color_attr}\" stroke=\"{color_attr}\"",
-                    label_deg
+                    "data-rb-structure=\"sign-label\" data-rb-sign=\"{}\" data-rb-sign-element=\"{}\" data-rb-sign-index=\"{i}\" data-rb-deg=\"{:.3}\" {}",
+                    escape_xml_attr(sign_key),
+                    escape_xml_attr(element_key),
+                    label_deg,
+                    paint_attrs
+                );
+                let class = format!(
+                    "rb-sign-label rb-sign-label-glyph rb-sign-{sign_key_token} rb-sign-element-{element_key_token}"
                 );
 
                 if let Some(node) = use_symbol(
@@ -146,7 +158,7 @@ pub fn render_signs(
                     x,
                     y,
                     size,
-                    "rb-sign-label rb-sign-label-glyph",
+                    class.as_str(),
                     Some(extra.as_str()),
                 ) {
                     out.push_str("  ");
