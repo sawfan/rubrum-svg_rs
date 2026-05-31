@@ -1,7 +1,9 @@
 use std::collections::BTreeMap;
 
 use rubrum::aspect::compute_aspects_natal;
-use rubrum::{AspectEndpointId, AspectRules, DegreeAspectKind, EndpointKey, House, Occupant};
+use rubrum::{
+    AspectEndpointId, AspectRules, DegreeAspectKind, EndpointKey, House, Occupant, OccupantFormat,
+};
 use rubrum_render::aspects::resolve_aspect_stroke_style;
 use rubrum_render::chart_data::{ChartData, HouseCuspData};
 use rubrum_render::error::ChartRenderError;
@@ -204,13 +206,7 @@ fn derive_house_number(cusps: &[HouseCuspData], lon_deg360: f64) -> Option<i32> 
 }
 
 fn occupant_display_name(occupant: Occupant) -> String {
-    match occupant {
-        Occupant::Empty => "".to_owned(),
-        Occupant::Body(body) => body.to_string(),
-        Occupant::Angle(angle) => angle.to_string(),
-        Occupant::ChartPoint(point) => point.to_string(),
-        Occupant::Lot(lot) => lot.to_string(),
-    }
+    occupant.format_occupant(OccupantFormat::Name)
 }
 
 fn occupant_symbol_href(theme: &Theme, occupant: Occupant) -> Option<String> {
