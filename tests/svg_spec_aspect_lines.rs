@@ -121,3 +121,138 @@ fn svg_spec_renderer_draws_aspect_lines_in_center() {
     // Aspect lines are injected as raw SVG with a stable id.
     assert!(svg.contains("id=\"rb-aspects\""));
 }
+
+#[test]
+fn svg_spec_renderer_draws_small_retrograde_marker_with_sprite_or_text_fallback() {
+    let layout = Layout {
+        bands: vec![BandSpec {
+            id: "bodies".to_owned(),
+            thickness: ThicknessSpec::Px(220.0),
+            lanes: vec![LaneSpec {
+                id: Some("natal".to_owned()),
+                template: None,
+                dataset: Some("natal".to_owned()),
+                house_set: None,
+                glyphs: Some(GlyphLaneSpec {
+                    mode: GlyphLaneMode::Bodies,
+                    ..Default::default()
+                }),
+                endpoint_filter: None,
+                overrides: LaneTemplate::default(),
+            }],
+            fill: None,
+            boundary: None,
+            ticks_inner: None,
+            ticks_outer: None,
+            houses: None,
+            signs: None,
+        }],
+    };
+
+    let mercury_rx = PlacementMotion::new(
+        Placement::new(
+            Coordinate::SignDegree(SignDegree::new(120.0)),
+            Occupant::Body(Body::Mercury),
+        ),
+        Motion::Retrograde,
+    );
+
+    let data = ChartData {
+        natal_bodies: Vec::new(),
+        datasets: vec![DatasetData {
+            id: "natal".to_owned(),
+            bodies: vec![mercury_rx],
+        }],
+        house_sets: Vec::new(),
+        house_cusps: Vec::new(),
+    };
+
+    let mut sprite_theme = Theme::default();
+    sprite_theme.svg.glyph_sprite_url = Some("".to_owned());
+    sprite_theme.cairo.occupant_symbol_size = 20.0;
+
+    let sprite_svg = rubrum_svg::chart_to_svg_string_spec(&sprite_theme, &layout, None, &data)
+        .expect("svg spec render with sprite failed");
+
+    assert!(sprite_svg.contains("href=\"#rb-body-mercury\""));
+    assert!(sprite_svg.contains("href=\"#rb-motion-retrograde\""));
+    assert!(sprite_svg.contains("rb-motion-retrograde-glyph"));
+    assert!(sprite_svg.contains("width=\"9.6\""));
+    assert!(!sprite_svg.contains("☿℞"));
+
+    let mut text_theme = Theme::default();
+    text_theme.svg.glyph_sprite_url = None;
+    text_theme.cairo.label_font_size = 18.0;
+
+    let text_svg = rubrum_svg::chart_to_svg_string_spec(&text_theme, &layout, None, &data)
+        .expect("svg spec render with text fallback failed");
+
+    assert!(text_svg.contains("data-rb-occupant=\"mercury\""));
+    assert!(text_svg.contains("rb-motion-retrograde-text"));
+    assert!(text_svg.contains("font-size=\"11.16\""));
+    assert!(!text_svg.contains("☿℞"));
+}
+
+#[test]
+fn svg_spec_renderer_uses_lot_glyphs_when_available() {
+    let layout = Layout {
+        bands: vec![BandSpec {
+            id: "bodies".to_owned(),
+            thickness: ThicknessSpec::Px(220.0),
+            lanes: vec![LaneSpec {
+                id: Some("natal".to_owned()),
+                template: None,
+                dataset: Some("natal".to_owned()),
+                house_set: None,
+                glyphs: Some(GlyphLaneSpec {
+                    mode: GlyphLaneMode::Bodies,
+                    ..Default::default()
+                }),
+                endpoint_filter: None,
+                overrides: LaneTemplate::default(),
+            }],
+            fill: None,
+            boundary: None,
+            ticks_inner: None,
+            ticks_outer: None,
+            houses: None,
+            signs: None,
+        }],
+    };
+
+    let fortune = PlacementMotion::new(
+        Placement::new(
+            Coordinate::SignDegree(SignDegree::new(42.0)),
+            Occupant::Lot(rubrum::Lot::Fortune),
+        ),
+        Motion::Direct,
+    );
+
+    let data = ChartData {
+        natal_bodies: Vec::new(),
+        datasets: vec![DatasetData {
+            id: "natal".to_owned(),
+            bodies: vec![fortune],
+        }],
+        house_sets: Vec::new(),
+        house_cusps: Vec::new(),
+    };
+
+    let mut sprite_theme = Theme::default();
+    sprite_theme.svg.glyph_sprite_url = Some("".to_owned());
+
+    let sprite_svg = rubrum_svg::chart_to_svg_string_spec(&sprite_theme, &layout, None, &data)
+        .expect("svg spec render with lot sprite failed");
+
+    assert!(sprite_svg.contains("href=\"#rb-lot-fortune\""));
+    assert!(sprite_svg.contains("data-rb-occupant-type=\"lot\""));
+
+    let mut text_theme = Theme::default();
+    text_theme.svg.glyph_sprite_url = None;
+
+    let text_svg = rubrum_svg::chart_to_svg_string_spec(&text_theme, &layout, None, &data)
+        .expect("svg spec render with lot text fallback failed");
+
+    assert!(text_svg.contains("data-rb-occupant=\"fortune\""));
+    assert!(text_svg.contains("⊗"));
+}

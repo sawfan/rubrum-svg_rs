@@ -5,8 +5,8 @@ use rubrum_render::glyph_paint::{
     GlyphPaint, resolve_occupant_glyph_paint, resolve_sign_glyph_paint, sign_element,
 };
 use rubrum_render::glyphs::{
-    angle_svg_symbol_id, body_svg_symbol_id, chart_point_svg_symbol_id, occupant_label,
-    sign_svg_symbol_id,
+    angle_svg_symbol_id, body_svg_symbol_id, chart_point_svg_symbol_id, lot_svg_symbol_id,
+    occupant_label, retrograde_svg_symbol_id, sign_svg_symbol_id,
 };
 use rubrum_render::labels::render_placement_label_template;
 use rubrum_render::layout::{
@@ -18,7 +18,7 @@ use rubrum_render::style::resolve_lane_style;
 use rubrum_render::theme::Theme;
 use rubrum_render::{chart_data::ChartData, error::ChartRenderError};
 
-use super::emit::{glyph_paint_attrs, push_hit_circle, push_text, push_use};
+use super::emit::{glyph_paint_attrs, push_hit_circle, push_text, push_text_extra, push_use};
 
 fn segment_spec_from_input(
     seg: &PlacementLabelSegmentInput,
@@ -93,6 +93,51 @@ fn estimate_text_bbox_size(text: &str, font_size: f64) -> f64 {
 
 fn estimate_sign_bbox_size(symbol_size: f64) -> f64 {
     symbol_size.max(1.0)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn push_retrograde_marker(
+    out: &mut String,
+    sprite_url: Option<&str>,
+    x: f64,
+    y: f64,
+    occupant_size: f64,
+    text_color: RgbaColor,
+    font_family: &str,
+    font_size: f64,
+) {
+    let marker_size = (occupant_size * 0.48).max(6.0);
+    let marker_offset = occupant_size * 0.42;
+    let marker_x = x + marker_offset;
+    let marker_y = y + marker_offset;
+
+    if let Some(sprite_base) = sprite_url {
+        let href = format!("{sprite_base}#{}", retrograde_svg_symbol_id());
+        let paint_attrs = glyph_paint_attrs(GlyphPaint::monochrome(text_color));
+        let extra = format!("data-rb-motion=\"retrograde\" {paint_attrs}");
+
+        push_use(
+            out,
+            href.as_str(),
+            marker_x,
+            marker_y,
+            marker_size,
+            "rb-motion rb-motion-retrograde rb-motion-retrograde-glyph",
+            Some(extra.as_str()),
+        );
+    } else {
+        push_text_extra(
+            out,
+            marker_x,
+            marker_y,
+            "℞",
+            text_color,
+            font_family,
+            (font_size * 0.62).max(6.0),
+            Some("rb-motion rb-motion-retrograde rb-motion-retrograde-text"),
+            Some("data-rb-motion=\"retrograde\""),
+        );
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -222,6 +267,7 @@ pub fn render_lane_glyphs(
                         Occupant::Body(body) => Some(body_svg_symbol_id(body)),
                         Occupant::ChartPoint(point) => Some(chart_point_svg_symbol_id(point)),
                         Occupant::Angle(angle) => Some(angle_svg_symbol_id(angle)),
+                        Occupant::Lot(lot) => Some(lot_svg_symbol_id(lot)),
                         _ => None,
                     }?;
                     Some(format!("{base}#{symbol_id}"))
@@ -279,16 +325,31 @@ pub fn render_lane_glyphs(
                         Some(use_extra.as_str()),
                     );
                 } else {
-                    let mut label = occupant_label(occupant);
-                    if pm.is_retrograde() {
-                        label.push('℞');
-                    }
+                    let label = occupant_label(occupant);
 
                     push_text(
                         out,
                         x,
                         y,
                         label.as_str(),
+                        text_color,
+                        font_family,
+                        font_size,
+                    );
+                }
+
+                if pm.is_retrograde() {
+                    let occupant_size = if sprite_href.is_some() {
+                        symbol_size
+                    } else {
+                        font_size
+                    };
+                    push_retrograde_marker(
+                        out,
+                        sprite_url,
+                        x,
+                        y,
+                        occupant_size,
                         text_color,
                         font_family,
                         font_size,
