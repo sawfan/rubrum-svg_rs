@@ -256,3 +256,66 @@ fn svg_spec_renderer_uses_lot_glyphs_when_available() {
     assert!(text_svg.contains("data-rb-occupant=\"fortune\""));
     assert!(text_svg.contains("⊗"));
 }
+
+#[test]
+fn svg_spec_renderer_uses_south_node_glyphs_when_available() {
+    let layout = Layout {
+        bands: vec![BandSpec {
+            id: "bodies".to_owned(),
+            thickness: ThicknessSpec::Px(220.0),
+            lanes: vec![LaneSpec {
+                id: Some("natal".to_owned()),
+                template: None,
+                dataset: Some("natal".to_owned()),
+                house_set: None,
+                glyphs: Some(GlyphLaneSpec {
+                    mode: GlyphLaneMode::Bodies,
+                    ..Default::default()
+                }),
+                endpoint_filter: None,
+                overrides: LaneTemplate::default(),
+            }],
+            fill: None,
+            boundary: None,
+            ticks_inner: None,
+            ticks_outer: None,
+            houses: None,
+            signs: None,
+        }],
+    };
+
+    let true_south_node = PlacementMotion::new(
+        Placement::new(
+            Coordinate::SignDegree(SignDegree::new(220.0)),
+            Occupant::ChartPoint(rubrum::ChartPoint::TrueSouthNode),
+        ),
+        Motion::Direct,
+    );
+
+    let data = ChartData {
+        natal_bodies: Vec::new(),
+        datasets: vec![DatasetData {
+            id: "natal".to_owned(),
+            bodies: vec![true_south_node],
+        }],
+        house_sets: Vec::new(),
+        house_cusps: Vec::new(),
+    };
+
+    let mut sprite_theme = Theme::default();
+    sprite_theme.svg.glyph_sprite_url = Some("".to_owned());
+
+    let sprite_svg = rubrum_svg::chart_to_svg_string_spec(&sprite_theme, &layout, None, &data)
+        .expect("svg spec render with south-node sprite failed");
+
+    assert!(sprite_svg.contains("href=\"#rb-chart-point-true_south_node\""));
+
+    let mut text_theme = Theme::default();
+    text_theme.svg.glyph_sprite_url = None;
+
+    let text_svg = rubrum_svg::chart_to_svg_string_spec(&text_theme, &layout, None, &data)
+        .expect("svg spec render with south-node text fallback failed");
+
+    assert!(text_svg.contains("data-rb-occupant=\"true_south_node\""));
+    assert!(text_svg.contains("☋"));
+}
