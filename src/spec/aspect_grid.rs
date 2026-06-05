@@ -11,8 +11,8 @@ use rubrum_render::glyph_paint::{
     GlyphPaint, resolve_occupant_glyph_paint, resolve_sign_glyph_paint, sign_element,
 };
 use rubrum_render::glyphs::{
-    angle_svg_symbol_id, body_svg_symbol_id, chart_point_svg_symbol_id, occupant_label,
-    sign_svg_symbol_id,
+    angle_svg_symbol_id, body_svg_symbol_id, chart_point_svg_symbol_id, lot_svg_symbol_id,
+    occupant_label, sign_svg_symbol_id,
 };
 use rubrum_render::options::RgbaColor;
 use rubrum_render::theme::Theme;
@@ -216,8 +216,8 @@ fn occupant_symbol_href(theme: &Theme, occupant: Occupant) -> Option<String> {
         Occupant::Body(b) => Some(body_svg_symbol_id(b)),
         Occupant::Angle(a) => Some(angle_svg_symbol_id(a)),
         Occupant::ChartPoint(p) => Some(chart_point_svg_symbol_id(p)),
-        // Lots are not currently present in our sprite conventions.
-        Occupant::Lot(_) | Occupant::Empty => None,
+        Occupant::Lot(l) => Some(lot_svg_symbol_id(l)),
+        Occupant::Empty => None,
     }?;
 
     Some(format!("{sprite}#{symbol_id}"))
@@ -280,16 +280,21 @@ fn occupant_sort_key(occ: Occupant) -> (i32, i32) {
         },
         Occupant::ChartPoint(p) => match p {
             rubrum::ChartPoint::TrueNode => 0,
-            rubrum::ChartPoint::MeanApog => 1,
+            rubrum::ChartPoint::MeanNode => 1,
+            rubrum::ChartPoint::TrueSouthNode => 2,
+            rubrum::ChartPoint::MeanSouthNode => 3,
+            rubrum::ChartPoint::MeanApog => 10,
             _ => 99,
         },
         Occupant::Lot(l) => match l {
-            rubrum::Lot::Fortune => 10,
+            rubrum::Lot::Fortune => 20,
             _ => 99,
         },
         Occupant::Angle(a) => match a {
             rubrum::Angle::Ascendant => 0,
-            rubrum::Angle::Midheaven => 1,
+            rubrum::Angle::Descendant => 1,
+            rubrum::Angle::Midheaven => 2,
+            rubrum::Angle::ImumCoeli => 3,
             _ => 99,
         },
         Occupant::Empty => 999,
