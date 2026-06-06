@@ -8,7 +8,7 @@ mod primitive;
 mod spec;
 
 pub use spec::{
-    AspectGridSvgGroup, AspectGridSvgOptions, aspect_grid_to_svg_document,
+    AspectGridSvgGroup, AspectGridSvgOptions, ChartSvgRenderOptions, aspect_grid_to_svg_document,
     aspect_grid_to_svg_group, aspect_grid_to_svg_string, chart_to_svg_string_spec,
-    default_aspect_grid_endpoint_order,
+    chart_to_svg_string_spec_with_options, default_aspect_grid_endpoint_order,
 };

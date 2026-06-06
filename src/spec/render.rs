@@ -14,6 +14,14 @@ use crate::primitive::rgba_css_var;
 use super::band::render_band_structure;
 use super::placements::render_lane_glyphs;
 
+#[derive(Clone, Copy, Debug, Default)]
+pub struct ChartSvgRenderOptions {
+    /// Optional rotation override for zodiac-bound visual layers (sign band,
+    /// zodiac ticks, placements, and aspects). House divisions keep using the
+    /// chart's live ASC-based rotation so they can change while signs stay put.
+    pub zodiac_rotation_deg_override: Option<f64>,
+}
+
 fn render_band_glyphs(
     out: &mut String,
     theme: &Theme,
@@ -53,11 +61,12 @@ fn render_band_glyphs(
     Ok(())
 }
 
-fn render_chart_group_to_svg(
+fn render_chart_group_to_svg_with_options(
     theme: &Theme,
     layout: &Layout,
     aspect_rules: Option<&rubrum::AspectRules>,
     data: &ChartData,
+    options: ChartSvgRenderOptions,
 ) -> Result<(RenderPlan, String), ChartRenderError> {
     let plan: RenderPlan = plan_chart_spec(theme, layout, data)?;
 
@@ -68,6 +77,7 @@ fn render_chart_group_to_svg(
     let cx = plan.center.x;
     let cy = plan.center.y;
     let rotation_deg = plan.rotation_deg;
+    let zodiac_rotation_deg = options.zodiac_rotation_deg_override.unwrap_or(rotation_deg);
     let base_r_outer = plan.base_r_outer;
 
     let band_thicknesses_px = resolve_band_thicknesses(layout, base_r_outer)?;
@@ -124,6 +134,7 @@ fn render_chart_group_to_svg(
             band_thickness_px,
             outer_shared_boundary_width,
             rotation_deg,
+            zodiac_rotation_deg,
             default_text_color,
         )?;
     }
@@ -138,7 +149,7 @@ fn render_chart_group_to_svg(
             data,
             cx,
             cy,
-            rotation_deg,
+            zodiac_rotation_deg,
             base_r_outer,
             band_thicknesses_px.as_slice(),
             default_text_color,
@@ -153,7 +164,7 @@ fn render_chart_group_to_svg(
                 data,
                 cx,
                 cy,
-                rotation_deg,
+                zodiac_rotation_deg,
                 base_r_outer,
                 band_thicknesses_px.as_slice(),
                 opts,
@@ -176,7 +187,7 @@ fn render_chart_group_to_svg(
             cy,
             r_outer,
             band_thickness_px,
-            rotation_deg,
+            zodiac_rotation_deg,
             default_text_color,
         )?;
     }
@@ -185,13 +196,31 @@ fn render_chart_group_to_svg(
     Ok((plan, out))
 }
 
-fn render_chart_to_svg(
+#[allow(dead_code)]
+fn render_chart_group_to_svg(
     theme: &Theme,
     layout: &Layout,
     aspect_rules: Option<&rubrum::AspectRules>,
     data: &ChartData,
+) -> Result<(RenderPlan, String), ChartRenderError> {
+    render_chart_group_to_svg_with_options(
+        theme,
+        layout,
+        aspect_rules,
+        data,
+        ChartSvgRenderOptions::default(),
+    )
+}
+
+fn render_chart_to_svg_with_options(
+    theme: &Theme,
+    layout: &Layout,
+    aspect_rules: Option<&rubrum::AspectRules>,
+    data: &ChartData,
+    options: ChartSvgRenderOptions,
 ) -> Result<String, ChartRenderError> {
-    let (plan, group) = render_chart_group_to_svg(theme, layout, aspect_rules, data)?;
+    let (plan, group) =
+        render_chart_group_to_svg_with_options(theme, layout, aspect_rules, data, options)?;
 
     let w = plan.canvas.width;
     let h = plan.canvas.height;
@@ -202,10 +231,11 @@ fn render_chart_to_svg(
     let cx = plan.center.x;
     let cy = plan.center.y;
     let rotation_deg = plan.rotation_deg;
+    let zodiac_rotation_deg = options.zodiac_rotation_deg_override.unwrap_or(rotation_deg);
 
     let mut out = String::new();
     out.push_str(&format!(
-        "<svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" width=\"{w}\" height=\"{h}\" viewBox=\"0 0 {w} {h}\" overflow=\"visible\" data-rb-cx=\"{cx}\" data-rb-cy=\"{cy}\" data-rb-rotation-deg=\"{rotation_deg}\">\n"
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" width=\"{w}\" height=\"{h}\" viewBox=\"0 0 {w} {h}\" overflow=\"visible\" data-rb-cx=\"{cx}\" data-rb-cy=\"{cy}\" data-rb-rotation-deg=\"{rotation_deg}\" data-rb-zodiac-rotation-deg=\"{zodiac_rotation_deg}\">\n"
     ));
 
     // Background.
@@ -221,6 +251,21 @@ fn render_chart_to_svg(
     Ok(out)
 }
 
+fn render_chart_to_svg(
+    theme: &Theme,
+    layout: &Layout,
+    aspect_rules: Option<&rubrum::AspectRules>,
+    data: &ChartData,
+) -> Result<String, ChartRenderError> {
+    render_chart_to_svg_with_options(
+        theme,
+        layout,
+        aspect_rules,
+        data,
+        ChartSvgRenderOptions::default(),
+    )
+}
+
 /// Render a chart to an SVG **string** using the spec inputs.
 ///
 /// This is the pure-SVG (no Cairo) renderer entrypoint.
@@ -231,4 +276,14 @@ pub fn chart_to_svg_string_spec(
     data: &ChartData,
 ) -> Result<String, ChartRenderError> {
     render_chart_to_svg(theme, layout, aspect_rules, data)
+}
+
+pub fn chart_to_svg_string_spec_with_options(
+    theme: &Theme,
+    layout: &Layout,
+    aspect_rules: Option<&rubrum::AspectRules>,
+    data: &ChartData,
+    options: ChartSvgRenderOptions,
+) -> Result<String, ChartRenderError> {
+    render_chart_to_svg_with_options(theme, layout, aspect_rules, data, options)
 }

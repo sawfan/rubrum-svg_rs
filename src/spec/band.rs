@@ -103,6 +103,7 @@ pub fn render_band_structure(
     band_thickness_px: f64,
     outer_shared_boundary_width: f64,
     rotation_deg: f64,
+    zodiac_rotation_deg: f64,
     default_text_color: RgbaColor,
 ) -> Result<(), ChartRenderError> {
     let options = &theme.cairo;
@@ -368,7 +369,7 @@ pub fn render_band_structure(
         cy,
         r_inner,
         r_outer,
-        rotation_deg,
+        zodiac_rotation_deg,
         default_text_color,
     );
 
@@ -416,7 +417,7 @@ pub fn render_band_structure(
             cy,
             boundary_r,
             boundary_width,
-            rotation_deg,
+            zodiac_rotation_deg,
             direction,
             stroke,
             options.stroke_width,
