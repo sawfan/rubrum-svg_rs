@@ -500,7 +500,7 @@ pub fn render_band_structure(
             cy,
             boundary_r,
             outer_shared_boundary_width,
-            rotation_deg,
+            zodiac_rotation_deg,
             spec,
         )?;
     }
