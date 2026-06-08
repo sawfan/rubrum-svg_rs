@@ -10,8 +10,8 @@ use rubrum_render::glyphs::{
 };
 use rubrum_render::labels::render_placement_label_template;
 use rubrum_render::layout::{
-    GlyphLaneMode, LaneSpec, PlacementLabelSegmentInput, PlacementLabelSegmentSpec,
-    PlacementLabelsSpec, PlacementSignGlyphSpec,
+    DeclinationRadialPlacementSpec, GlyphLaneMode, LaneSpec, PlacementLabelSegmentInput,
+    PlacementLabelSegmentSpec, PlacementLabelsSpec, PlacementSignGlyphSpec,
 };
 use rubrum_render::options::RgbaColor;
 use rubrum_render::style::resolve_lane_style;
@@ -140,6 +140,48 @@ fn push_retrograde_marker(
     }
 }
 
+fn declination_adjusted_radius(
+    base_r: f64,
+    lane_r_inner: f64,
+    lane_r_outer: f64,
+    symbol_size: f64,
+    declination_deg: Option<f64>,
+    spec: Option<&DeclinationRadialPlacementSpec>,
+) -> f64 {
+    let Some(spec) = spec.filter(|spec| spec.enabled) else {
+        return base_r;
+    };
+    let Some(declination_deg) = declination_deg.filter(|d| d.is_finite()) else {
+        return base_r;
+    };
+
+    let max_declination = spec.max_declination_deg.unwrap_or(30.0).abs().max(1.0);
+    let strength = spec.strength.unwrap_or(0.65).clamp(0.0, 1.0);
+    let curve = spec.curve.unwrap_or(1.35).max(0.01);
+    let padding = spec
+        .padding_px
+        .unwrap_or((symbol_size * 0.55).max(6.0))
+        .max(0.0);
+
+    let usable_inner = (lane_r_inner + padding).min(lane_r_outer);
+    let usable_outer = (lane_r_outer - padding).max(lane_r_inner);
+    if usable_outer <= usable_inner {
+        return base_r.clamp(lane_r_inner, lane_r_outer);
+    }
+
+    let mid = (usable_inner + usable_outer) * 0.5;
+    let half = ((usable_outer - usable_inner) * 0.5) * strength;
+    if half <= 0.0 {
+        return mid;
+    }
+
+    let normalized = (declination_deg / max_declination).clamp(-1.0, 1.0);
+    let compressed = (normalized * curve).tanh() / curve.tanh();
+
+    // Positive declination moves outward; negative moves inward.
+    (mid + compressed * half).clamp(usable_inner, usable_outer)
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn render_lane_glyphs(
     out: &mut String,
@@ -236,6 +278,7 @@ pub fn render_lane_glyphs(
             let text_color = style.stroke.or(dataset_color).unwrap_or(default_text_color);
 
             let symbol_size = theme.cairo.occupant_symbol_size.max(1.0);
+            let declination_radial_spec = glyphs.declination_radial.as_ref();
             let sprite_url = theme.svg.glyph_sprite_url.as_deref();
 
             let endpoint_filter = lane.endpoint_filter.as_ref().map(|f| f.compile());
@@ -258,7 +301,18 @@ pub fn render_lane_glyphs(
                 };
 
                 let lon_deg = normalize_deg(sign_degree.degrees + rotation_deg);
-                let (x, y) = polar_to_xy(cx, cy, glyph_r, lon_deg);
+                let declination_deg = data
+                    .placement_metadata(dataset, pm.occupant())
+                    .and_then(|metadata| metadata.declination_deg);
+                let placement_r = declination_adjusted_radius(
+                    glyph_r,
+                    lane_r_inner,
+                    lane_r_outer,
+                    symbol_size,
+                    declination_deg,
+                    declination_radial_spec,
+                );
+                let (x, y) = polar_to_xy(cx, cy, placement_r, lon_deg);
 
                 // If a sprite sheet is configured and we can map this occupant to a stable symbol ID,
                 // render via <use href="{sprite}#rb-body-sun">. Otherwise fall back to text.
@@ -293,8 +347,9 @@ pub fn render_lane_glyphs(
                 // Wrap the placement in a group with stable metadata for browser hit-testing.
                 // This allows the Trunk/WASM example to identify which placement was clicked.
                 out.push_str(&format!(
-                    "  <g class=\"rb-placement rb-placement-{occupant_key_token}\" data-rb-dataset=\"{dataset_attr}\" data-rb-endpoint=\"{occupant_key_attr}\" data-rb-occupant=\"{occupant_key_attr}\" data-rb-occupant-type=\"{occupant_type}\" data-rb-degree=\"{}\" data-rb-retrograde=\"{retro_attr}\">\n",
-                    sign_degree.degrees
+                    "  <g class=\"rb-placement rb-placement-{occupant_key_token}\" data-rb-dataset=\"{dataset_attr}\" data-rb-endpoint=\"{occupant_key_attr}\" data-rb-occupant=\"{occupant_key_attr}\" data-rb-occupant-type=\"{occupant_type}\" data-rb-degree=\"{}\" data-rb-declination=\"{}\" data-rb-retrograde=\"{retro_attr}\">\n",
+                    sign_degree.degrees,
+                    declination_deg.map(|d| d.to_string()).unwrap_or_default()
                 ));
 
                 // Increase clickable area: add an invisible hit target behind the glyph/text.
@@ -466,10 +521,10 @@ pub fn render_lane_glyphs(
                             if let Some(prev_r) = prev_r {
                                 let this_r = match label_side {
                                     rubrum_render::layout::PlacementLabelSide::Inner => {
-                                        (glyph_r - offset_in).max(0.0)
+                                        (placement_r - offset_in).max(0.0)
                                     }
                                     rubrum_render::layout::PlacementLabelSide::Outer => {
-                                        glyph_r + offset_in
+                                        placement_r + offset_in
                                     }
                                 };
 
@@ -483,13 +538,13 @@ pub fn render_lane_glyphs(
                                     rubrum_render::layout::PlacementLabelSide::Inner => {
                                         if (prev_r - this_r) < needed {
                                             let forced_r = (prev_r - needed).max(0.0);
-                                            offset_in = (glyph_r - forced_r).max(offset_in);
+                                            offset_in = (placement_r - forced_r).max(offset_in);
                                         }
                                     }
                                     rubrum_render::layout::PlacementLabelSide::Outer => {
                                         if (this_r - prev_r) < needed {
                                             let forced_r = prev_r + needed;
-                                            offset_in = (forced_r - glyph_r).max(offset_in);
+                                            offset_in = (forced_r - placement_r).max(offset_in);
                                         }
                                     }
                                 }
@@ -498,9 +553,11 @@ pub fn render_lane_glyphs(
 
                         let r = match label_side {
                             rubrum_render::layout::PlacementLabelSide::Inner => {
-                                (glyph_r - offset_in).max(0.0)
+                                (placement_r - offset_in).max(0.0)
                             }
-                            rubrum_render::layout::PlacementLabelSide::Outer => glyph_r + offset_in,
+                            rubrum_render::layout::PlacementLabelSide::Outer => {
+                                placement_r + offset_in
+                            }
                         };
 
                         if matches!(label_side, rubrum_render::layout::PlacementLabelSide::Inner)
