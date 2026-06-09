@@ -130,13 +130,20 @@ pub fn render_band_structure(
         }
     }
 
+    let lane_count = band.lanes.len();
+    let lane_thickness = if lane_count > 0 {
+        band_thickness_px / (lane_count as f64)
+    } else {
+        0.0
+    };
+
     // Always emit a stable hit target for the band so the inspector can select it even when
     // the fill is omitted or fully transparent.
     {
         let hit_r = (r_inner + r_outer) / 2.0;
         let hit_w = band_thickness_px.max(10.0);
         let extra = format!(
-            "data-rb-structure=\"band\" data-rb-band=\"{band_id_attr}\" data-rb-r-inner=\"{r_inner}\" data-rb-r-outer=\"{r_outer}\""
+            "data-rb-structure=\"band\" data-rb-band=\"{band_id_attr}\" data-rb-r-inner=\"{r_inner}\" data-rb-r-outer=\"{r_outer}\" data-rb-lane-count=\"{lane_count}\""
         );
 
         let class = format!("rb-band-hit rb-band-hit-{band_id_token}");
@@ -146,13 +153,6 @@ pub fn render_band_structure(
             out.push('\n');
         }
     }
-
-    let lane_count = band.lanes.len();
-    let lane_thickness = if lane_count > 0 {
-        band_thickness_px / (lane_count as f64)
-    } else {
-        0.0
-    };
 
     // Lane fills (template + overrides).
     for (i, lane) in band.lanes.iter().enumerate() {
