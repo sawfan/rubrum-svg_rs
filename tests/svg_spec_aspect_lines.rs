@@ -1,3 +1,4 @@
+use rubrum_render::chart_data::{DatasetMetadata, PlacementMetadata};
 use rubrum_render::dataset::{DatasetData, HouseSetData};
 use rubrum_render::layout::{
     BandSpec, GlyphLaneMode, GlyphLaneSpec, LaneSpec, PlacementBoundaryTicksSpec,
@@ -48,6 +49,7 @@ fn svg_spec_renderer_draws_aspect_lines_in_center() {
                             offset_in: Some(0.0),
                             offset_out: Some(0.0),
                         }),
+                        declination_radial: None,
                         placement_labels: None,
                     }),
                     endpoint_filter: None,
@@ -112,6 +114,7 @@ fn svg_spec_renderer_draws_aspect_lines_in_center() {
             id: "natal".to_owned(),
             house_cusps: Vec::new(),
         }],
+        dataset_metadata: Vec::new(),
         house_cusps: Vec::new(),
     };
 
@@ -120,6 +123,62 @@ fn svg_spec_renderer_draws_aspect_lines_in_center() {
 
     // Aspect lines are injected as raw SVG with a stable id.
     assert!(svg.contains("id=\"rb-aspects\""));
+}
+
+#[test]
+fn declination_map_svg_renders_rectangular_projection_with_metadata() {
+    let sun = PlacementMotion::new(
+        Placement::new(
+            Coordinate::SignDegree(SignDegree::new(15.0)),
+            Occupant::Body(Body::Sun),
+        ),
+        Motion::Direct,
+    );
+    let moon = PlacementMotion::new(
+        Placement::new(
+            Coordinate::SignDegree(SignDegree::new(195.0)),
+            Occupant::Body(Body::Moon),
+        ),
+        Motion::Direct,
+    );
+
+    let data = ChartData {
+        natal_bodies: Vec::new(),
+        datasets: vec![DatasetData {
+            id: "natal".to_owned(),
+            bodies: vec![sun, moon],
+        }],
+        house_sets: Vec::new(),
+        dataset_metadata: vec![DatasetMetadata {
+            id: "natal".to_owned(),
+            placements: vec![
+                PlacementMetadata {
+                    occupant: Occupant::Body(Body::Sun),
+                    declination_deg: Some(24.2),
+                },
+                PlacementMetadata {
+                    occupant: Occupant::Body(Body::Moon),
+                    declination_deg: Some(-3.5),
+                },
+            ],
+        }],
+        house_cusps: Vec::new(),
+    };
+
+    let svg = rubrum_svg::declination_map_to_svg_string(
+        &Theme::default(),
+        &data,
+        &rubrum_render::DeclinationMapLayout::default(),
+        rubrum_svg::DeclinationMapSvgOptions::default(),
+    )
+    .expect("declination map render failed");
+
+    assert!(svg.contains("rb-declination-map"));
+    assert!(svg.contains("rb-declination-map-ecliptic"));
+    assert!(svg.contains("data-rb-declination=\"24.2\""));
+    assert!(svg.contains("rb-declination-map-placement-oob"));
+    assert!(svg.contains("15°00′"));
+    assert!(!svg.contains("SUN 15°00′"));
 }
 
 #[test]
@@ -164,6 +223,7 @@ fn svg_spec_renderer_draws_small_retrograde_marker_with_sprite_or_text_fallback(
             bodies: vec![mercury_rx],
         }],
         house_sets: Vec::new(),
+        dataset_metadata: Vec::new(),
         house_cusps: Vec::new(),
     };
 
@@ -235,6 +295,7 @@ fn svg_spec_renderer_uses_lot_glyphs_when_available() {
             bodies: vec![fortune],
         }],
         house_sets: Vec::new(),
+        dataset_metadata: Vec::new(),
         house_cusps: Vec::new(),
     };
 
@@ -299,6 +360,7 @@ fn svg_spec_renderer_uses_south_node_glyphs_when_available() {
             bodies: vec![true_south_node],
         }],
         house_sets: Vec::new(),
+        dataset_metadata: Vec::new(),
         house_cusps: Vec::new(),
     };
 
