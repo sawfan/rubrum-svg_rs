@@ -161,20 +161,39 @@ fn sign_by_index(idx: usize) -> rubrum::Sign {
     SIGNS[idx]
 }
 
-fn ecliptic_path(layout: &DeclinationMapLayout) -> String {
-    let mut out = String::new();
-    for i in 0..=144 {
-        let longitude = i as f64 * 360.0 / 144.0;
+fn ecliptic_path_segments(layout: &DeclinationMapLayout) -> Vec<String> {
+    // The ecliptic is a continuous sine-like curve. However, because the chart wraps
+    // longitude at 0°/360°, tiny dashed fragments at the far left/right edge can read
+    // as a stray dotted horizontal on the 0° declination line. Trim only those wrapped
+    // edge fragments; keep the center crossing continuous.
+    const EDGE_GAP_LONGITUDE_DEG: f64 = 3.0;
+
+    let mut segments = Vec::new();
+    let mut current = String::new();
+    for i in 0..=288 {
+        let longitude = i as f64 * 360.0 / 288.0;
+        if longitude <= EDGE_GAP_LONGITUDE_DEG || longitude >= 360.0 - EDGE_GAP_LONGITUDE_DEG {
+            if !current.is_empty() {
+                segments.push(std::mem::take(&mut current));
+            }
+            continue;
+        }
+
         let declination = layout.ecliptic_obliquity_deg * longitude.to_radians().sin();
         let x = x_for_longitude(layout, longitude);
         let y = y_for_declination(layout, declination);
-        if i == 0 {
-            out.push_str(&format!("M {x:.2} {y:.2}"));
+        if current.is_empty() {
+            current.push_str(&format!("M {x:.2} {y:.2}"));
         } else {
-            out.push_str(&format!(" L {x:.2} {y:.2}"));
+            current.push_str(&format!(" L {x:.2} {y:.2}"));
         }
     }
-    out
+
+    if !current.is_empty() {
+        segments.push(current);
+    }
+
+    segments
 }
 
 fn placements_from_data(
@@ -427,6 +446,23 @@ pub fn declination_map_to_svg_group(
         );
     }
 
+    if layout.show_ecliptic_curve {
+        for path in ecliptic_path_segments(layout) {
+            group = group.add(
+                Path::new()
+                    .set("class", "rb-declination-map-ecliptic")
+                    .set("d", path)
+                    .set("fill", "none")
+                    .set("stroke", css_var("--rb-declination-map-ecliptic", ecliptic))
+                    .set("stroke-width", 2.4)
+                    .set("stroke-linecap", "round")
+                    .set("stroke-linejoin", "round")
+                    .set("stroke-dasharray", "9 7")
+                    .set("stroke-opacity", 0.78),
+            );
+        }
+    }
+
     for d in [-30, -20, -10, 0, 10, 20, 30] {
         let y = y_for_declination(layout, d as f64);
         let is_equator = d == 0;
@@ -453,7 +489,8 @@ pub fn declination_map_to_svg_group(
                     },
                 )
                 .set("stroke-width", if is_equator { 2.2 } else { 1.0 })
-                .set("stroke-opacity", if is_equator { 0.72 } else { 0.20 }),
+                .set("stroke-dasharray", "none")
+                .set("stroke-opacity", if is_equator { 1.0 } else { 0.20 }),
         );
         let label = if d > 0 {
             format!("+{d}°")
@@ -487,25 +524,9 @@ pub fn declination_map_to_svg_group(
                     .set("x2", plot_x2)
                     .set("y2", y)
                     .set("stroke", css_var("--rb-declination-map-tropic", tropic))
-                    .set("stroke-opacity", 0.42)
-                    .set("stroke-dasharray", "7 6"),
+                    .set("stroke-opacity", 0.42),
             );
         }
-    }
-
-    if layout.show_ecliptic_curve {
-        group = group.add(
-            Path::new()
-                .set("class", "rb-declination-map-ecliptic")
-                .set("d", ecliptic_path(layout))
-                .set("fill", "none")
-                .set("stroke", css_var("--rb-declination-map-ecliptic", ecliptic))
-                .set("stroke-width", 2.4)
-                .set("stroke-linecap", "round")
-                .set("stroke-linejoin", "round")
-                .set("stroke-dasharray", "9 7")
-                .set("stroke-opacity", 0.78),
-        );
     }
 
     for idx in 0..12 {
@@ -640,14 +661,6 @@ pub fn declination_map_to_svg_group(
 
         placement_group = placement_group
             .add(svg::node::element::Title::new(title))
-            .add(
-                Line::new()
-                    .set("class", "rb-declination-map-parallel-trace")
-                    .set("x1", 0)
-                    .set("y1", 0)
-                    .set("x2", plot_x2 - x)
-                    .set("y2", 0),
-            )
             .add(
                 Circle::new()
                     .set("class", "rb-declination-map-placement-halo")

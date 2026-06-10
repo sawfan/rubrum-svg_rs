@@ -177,6 +177,17 @@ fn declination_map_svg_renders_rectangular_projection_with_metadata() {
     assert!(svg.contains("rb-declination-map-ecliptic"));
     assert!(svg.contains("data-rb-declination=\"24.2\""));
     assert!(svg.contains("rb-declination-map-placement-oob"));
+    let ecliptic_idx = svg
+        .find("rb-declination-map-ecliptic")
+        .expect("ecliptic path missing");
+    assert!(!svg.contains("M 72.00 249.00"));
+    assert!(!svg.contains("1152.00 249.00"));
+    assert!(svg.contains("612.00 249.00"));
+    let equator_idx = svg
+        .find("rb-declination-map-equator\"")
+        .expect("equator line missing");
+    assert!(ecliptic_idx < equator_idx);
+    assert!(svg.contains("stroke-opacity=\"1\""));
     assert!(svg.contains("15°00′"));
     assert!(!svg.contains("SUN 15°00′"));
 }
