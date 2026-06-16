@@ -206,7 +206,19 @@ fn derive_house_number(cusps: &[HouseCuspData], lon_deg360: f64) -> Option<i32> 
 }
 
 fn occupant_display_name(occupant: Occupant) -> String {
-    occupant.format_occupant(OccupantFormat::Name)
+    let name = occupant.format_occupant(OccupantFormat::Name);
+    match name.as_str() {
+        "True Node" => "T Node".to_owned(),
+        "Mean Node" => "M Node".to_owned(),
+        "True South Node" => "T S.Node".to_owned(),
+        "Mean South Node" => "M S.Node".to_owned(),
+        "Ascendant" => "Asc".to_owned(),
+        "Descendant" => "Dsc".to_owned(),
+        "Midheaven" => "MC".to_owned(),
+        "Imum Coeli" => "IC".to_owned(),
+        "Part of Fortune" => "Fortune".to_owned(),
+        _ => name,
+    }
 }
 
 fn occupant_symbol_href(theme: &Theme, occupant: Occupant) -> Option<String> {
@@ -597,9 +609,11 @@ pub fn aspect_grid_to_svg_group(
 
     let row_h = opts.row_height_px.unwrap_or(opts.cell_px);
 
-    // Column widths.
+    // Column widths. Labels use compact abbreviations for long chart
+    // points/angles/lots, but keep a little extra width so the expanded
+    // endpoint set remains readable.
     let icon_w = row_h;
-    let label_w = (opts.cell_px * 7.5).max(160.0);
+    let label_w = (opts.cell_px * 8.5).max(180.0);
     let house_w = (opts.cell_px * 1.4).max(28.0);
     let gap = (opts.cell_px * 0.4).max(8.0);
 
