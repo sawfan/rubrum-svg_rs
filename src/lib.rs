@@ -1,3 +1,8 @@
+#![allow(clippy::too_many_arguments)]
+#![allow(clippy::collapsible_if)]
+#![allow(clippy::needless_range_loop)]
+#![allow(clippy::unnecessary_to_owned)]
+
 //! Pure-SVG rendering backend for Rubrum charts.
 //!
 //! This crate exists to provide a Cairo-free renderer that can compile to `wasm32`.

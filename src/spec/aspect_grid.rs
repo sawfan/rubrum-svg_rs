@@ -26,10 +26,10 @@ use crate::primitive::{
 };
 
 fn aspect_grid_canvas_bg(theme: &Theme) -> RgbaColor {
-    if let Some(palette) = theme.svg.aspect_grid {
-        if let Some(bg) = palette.canvas_bg {
-            return bg;
-        }
+    if let Some(palette) = theme.svg.aspect_grid
+        && let Some(bg) = palette.canvas_bg
+    {
+        return bg;
     }
 
     // Default: match the chart background.
@@ -37,10 +37,10 @@ fn aspect_grid_canvas_bg(theme: &Theme) -> RgbaColor {
 }
 
 fn aspect_grid_cell_bg(theme: &Theme) -> RgbaColor {
-    if let Some(palette) = theme.svg.aspect_grid {
-        if let Some(bg) = palette.cell_bg {
-            return bg;
-        }
+    if let Some(palette) = theme.svg.aspect_grid
+        && let Some(bg) = palette.cell_bg
+    {
+        return bg;
     }
 
     // Default: a subtle surface distinct from the canvas.
@@ -62,20 +62,20 @@ fn aspect_grid_cell_bg(theme: &Theme) -> RgbaColor {
 }
 
 fn aspect_grid_grid_line(theme: &Theme) -> RgbaColor {
-    if let Some(palette) = theme.svg.aspect_grid {
-        if let Some(c) = palette.grid_line {
-            return c;
-        }
+    if let Some(palette) = theme.svg.aspect_grid
+        && let Some(c) = palette.grid_line
+    {
+        return c;
     }
 
     theme.effective_structure_color()
 }
 
 fn aspect_grid_text(theme: &Theme) -> RgbaColor {
-    if let Some(palette) = theme.svg.aspect_grid {
-        if let Some(c) = palette.text {
-            return c;
-        }
+    if let Some(palette) = theme.svg.aspect_grid
+        && let Some(c) = palette.text
+    {
+        return c;
     }
 
     theme.effective_text_color()
@@ -836,7 +836,7 @@ pub fn aspect_grid_to_svg_group(
 
                 let cx = x + opts.cell_px / 2.0;
                 let cy = y + row_h / 2.0;
-                let kind_class = format!("rb-ag-aspect rb-ag-aspect-{}", kind.to_string());
+                let kind_class = format!("rb-ag-aspect rb-ag-aspect-{kind}");
 
                 group = group.add(centered_text_node(
                     cx,

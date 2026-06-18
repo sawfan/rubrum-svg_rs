@@ -231,7 +231,6 @@ fn qualified_endpoint_id(dataset_id: &str, occupant: &rubrum::Occupant) -> Strin
 }
 
 #[allow(dead_code)]
-
 fn placement_ring_radius_for_dataset(
     layout: &Layout,
     base_r_outer: f64,
